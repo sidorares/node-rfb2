@@ -86,19 +86,24 @@ RfbClient.prototype.readServerVersion = function()
         // read security types
         stream.unpack('C', function(res) {
             var numSecTypes = res[0];
+            console.log(cli, numSecTypes);
             if (numSecTypes == 0) {
                 console.error(['zero num sec types', res]);
                 cli.readError();
             } else {
 
                 stream.get(numSecTypes, function(secTypes) {
-                    // TODO: check what is in options
-                    //
-                    // send sec type we are going to use
-                    //cli.securityType = rfb.security.None;
-                    cli.securityType = rfb.security.VNC;
-                    stream.pack('C', [cli.securityType]).flush();
-                    cli.processSecurity();
+                    var securitySupported = [];
+                    for (var s = 0; s < secTypes.length; ++s)
+                        securitySupported[secTypes[s]] = true;
+                    cli.params.security.forEach( function(clientSecurity) {
+                        if (securitySupported[clientSecurity]) {
+                            cli.securityType = clientSecurity;
+                            stream.pack('C', [cli.securityType]).flush();
+                            return cli.processSecurity();
+                        }
+                    });
+                    throw new Error('Server does not support any security provided by client');
                 });
             }
         });
@@ -126,21 +131,32 @@ RfbClient.prototype.processSecurity = function()
 {
     var stream = this.pack_stream;
     var cli = this;
+    // TODO: refactor and move security to external file
     switch(cli.securityType) {
     case rfb.security.None:
         // do nothing
         cli.readSecurityResult();
         break;
     case rfb.security.VNC:
-        stream.get(16, function(challenge) {
+        var sendVncChallengeResponse = function(challenge, password) {
             var response = require('./d3des').response(challenge, cli.params.password);
             stream.pack('a', [response]).flush();
             cli.readSecurityResult();
+        }
+        stream.get(16, function(challenge) {
+            if (cli.params.password)
+                sendVncChallengeResponse(challenge, password);
+            else if (cli.params.credentialsCallback) {
+                cli.params.credentialsCallback.call(cli, function(password) {
+                    sendVncChallengeResponse(challenge, password);
+                });
+            } else {
+                throw new Error('Server requires VNC security but no password given');
+            }
         });
         break;
     default:
-        console.error('unknown security type: ' + cli.securityType);
-        process.exit(1);
+        throw new Error('unknown security type: ' + cli.securityType);
     }
 }
 
@@ -216,7 +232,7 @@ RfbClient.prototype.setEncodings = function()
 
     // build encodings list
     // TODO: API
-    var encodings = [rfb.encodings.raw, rfb.encodings.copyRect, rfb.encodings.pseudoDesktopSize, rfb.encodings.hextile];
+    var encodings = cli.params.encodings || [rfb.encodings.raw, rfb.encodings.copyRect, rfb.encodings.pseudoDesktopSize, rfb.encodings.hextile];
 
     stream.pack('CxS', [rfb.clientMsgTypes.setEncodings, encodings.length]);
     stream.pack(repeat('l', encodings.length), encodings);
@@ -545,6 +561,7 @@ RfbClient.prototype.updateClipboard = function(text) {
     stream.flush;
 }
 
+// TODO: move out of rfbclient
 var fs = require('fs');
 function createRfbStream(name)
 {
@@ -592,13 +609,26 @@ function createRfbStream(name)
 
 function createConnection(params)
 {
+    // first matched to list of supported by server will be used
+    if (!params.security)
+        params.security = [rfb.security.VNC, rfb.security.None];
+
     var stream;
-    if (params.in)
-        stream = createRfbStream(params.rfbfile);
-    else {
-        stream = net.createConnection(params.port, params.host);
+    if (!params.stream) {
+        if (params.in)
+            stream = createRfbStream(params.rfbfile);
+        else {
+            if (!params.host)
+                params.host = '127.0.0.1';
+            if (!params.port)
+                params.port = 5900;
+            stream = net.createConnection(params.port, params.host);
+        }
+    } else {
+        stream = params.stream;
     }
 
+    // todo: move outside rfbclient
     if (params.out)
     {
         var start = Date.now();
