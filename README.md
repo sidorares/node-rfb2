@@ -68,7 +68,7 @@ TODO:
   - ARD and MS security types
 
 # see also:
-  https://github.com/substack/node-rfb - influenced by this module but no code shared
+  https://github.com/substack/node-rfb
 
 # preformance
   ( TODO: benchmark )
