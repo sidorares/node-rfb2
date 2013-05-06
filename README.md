@@ -6,7 +6,7 @@ rfb wire protocol client and server
 ```js
 var rfb = require('rfb2');
 var r = rfb.createConnection({
-  host: '127.0.0.1,
+  host: '127.0.0.1',
   port: 5900,
   password: 'secret'
 });
