@@ -3,7 +3,7 @@
 , "description": "RFB protocol client and server"
 , "keywords": ["vnc", "rfb"]
 , "homepage": "https://github.com/sidorares/node-rfb2"
-, "version" : "0.0.4"
+, "version" : "0.0.5"
 , "maintainers" :
   [ { "name": "Andrey Sidorov"
     , "email": "sidoares@yandex.ru"
