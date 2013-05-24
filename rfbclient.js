@@ -120,8 +120,7 @@ RfbClient.prototype.readSecurityResult = function()
             cli.clientInit();
         } else {
             stream.readString(function(message) {
-                console.error(message);
-                process.exit(0);
+                cli.emit('error', message);
             });
         }
     });
