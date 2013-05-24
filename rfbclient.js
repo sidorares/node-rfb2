@@ -86,7 +86,6 @@ RfbClient.prototype.readServerVersion = function()
         // read security types
         stream.unpack('C', function(res) {
             var numSecTypes = res[0];
-            console.log(cli, numSecTypes);
             if (numSecTypes === 0) {
                 console.error(['zero num sec types', res]);
                 cli.readError();
@@ -146,7 +145,7 @@ RfbClient.prototype.processSecurity = function()
         }
         stream.get(16, function(challenge) {
             if (cli.params.password)
-                sendVncChallengeResponse(challenge, password);
+                sendVncChallengeResponse(challenge, cli.params.password);
             else if (cli.params.credentialsCallback) {
                 cli.params.credentialsCallback.call(cli, function(password) {
                     sendVncChallengeResponse(challenge, password);
@@ -436,7 +435,6 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
 
         function drawRect(x, y, w, h)
         {
-            console.log(tile);
             console.log(['drawRect', x, y, w, h, tile.foregroundColor]);
             // TODO: optimise
             for(var px = x; px < x+w; ++px)
@@ -652,6 +650,10 @@ function createConnection(params)
         });
     }
 
-    return new RfbClient(stream, params);
+    var client = new RfbClient(stream, params);
+    stream.on('error', function(err) {
+      client.emit('error', err);
+    });
+    return client;
 }
 exports.createConnection = createConnection;
