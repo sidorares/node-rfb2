@@ -67,7 +67,7 @@ RfbClient.prototype.readServerVersion = function()
             stream.unpack('L', function(secType) {
                 var type = secType[0];
                 console.error('3.003 security type: ' + type);
-                if (type == 0)
+                if (type === 0)
                 {
                     cli.readError();
                 } else {
@@ -87,22 +87,24 @@ RfbClient.prototype.readServerVersion = function()
         stream.unpack('C', function(res) {
             var numSecTypes = res[0];
             console.log(cli, numSecTypes);
-            if (numSecTypes == 0) {
+            if (numSecTypes === 0) {
                 console.error(['zero num sec types', res]);
                 cli.readError();
             } else {
 
                 stream.get(numSecTypes, function(secTypes) {
                     var securitySupported = [];
-                    for (var s = 0; s < secTypes.length; ++s)
+                    var s;
+                    for (s = 0; s < secTypes.length; ++s)
                         securitySupported[secTypes[s]] = true;
-                    cli.params.security.forEach( function(clientSecurity) {
+                    for (s = 0; s < cli.params.security.length; ++s) {
+                        clientSecurity = cli.params.security[s];
                         if (securitySupported[clientSecurity]) {
                             cli.securityType = clientSecurity;
                             stream.pack('C', [cli.securityType]).flush();
                             return cli.processSecurity();
                         }
-                    });
+                    }
                     throw new Error('Server does not support any security provided by client');
                 });
             }
