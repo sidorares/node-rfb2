@@ -1,7 +1,7 @@
 node-rfb2
 =========
 
-rfb wire protocol client and server
+[RFB](http://en.wikipedia.org/wiki/RFB_protocol) wire protocol client and server
 
 ```js
 var rfb = require('rfb2');
