@@ -139,7 +139,7 @@ RfbClient.prototype.processSecurity = function()
         break;
     case rfb.security.VNC:
         var sendVncChallengeResponse = function(challenge, password) {
-            var response = require('./d3des').response(challenge, cli.params.password);
+            var response = require('./d3des').response(challenge, password);
             stream.pack('a', [response]).flush();
             cli.readSecurityResult();
         }
