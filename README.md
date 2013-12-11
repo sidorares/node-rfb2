@@ -66,6 +66,7 @@ In progress:
 TODO:
   - ZRle, RRE, CoRRE, Zlib, Tight encodings
   - ARD and MS security types
+  - VNC server with [x11](https://github.com/sidorares/node-x11) and COMPOSITE/DAMAGE extensions
 
 # see also:
   - [node-rfb](https://github.com/substack/node-rfb) - Substack's implementation of rfb protocol.
@@ -74,6 +75,7 @@ TODO:
   - [rfbrecord](https://github.com/sidorares/rfbrecord) - stream VNC connection to video file
   - [ANSI-vnc](https://npmjs.org/package/ansi-vnc) - terminal vnc client.
   - [node-vnc](https://github.com/sidorares/node-vnc) - graphical vnc client for X Window graphics
+  - [vnc.js](https://github.com/bgaff/vnc.js) - LinkedIn intern [hackday 2011 project](http://engineering.linkedin.com/javascript/vncjs-how-build-javascript-vnc-client-24-hour-hackday)
   
   
 
