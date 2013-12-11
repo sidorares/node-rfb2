@@ -68,7 +68,14 @@ TODO:
   - ARD and MS security types
 
 # see also:
-  https://github.com/substack/node-rfb
+  - [node-rfb](https://github.com/substack/node-rfb) - Substack's implementation of rfb protocol.
+  - [VNC client on 200 lines of JavaScript](http://blog.mgechev.com/2013/08/30/vnc-javascript-nodejs/) - blog post and [HTML5 client](https://github.com/mgechev/js-vnc-demo-project) using node-rfb2
+  - [Vnc-over-gif](https://github.com/sidorares/vnc-over-gif) - vnc to gif proxy server. Stream your screen to animated gif image!
+  - [rfbrecord](https://github.com/sidorares/rfbrecord) - stream VNC connection to video file
+  - [ANSI-vnc](https://npmjs.org/package/ansi-vnc) - terminal vnc client.
+  - [node-vnc](https://github.com/sidorares/node-vnc) - graphical vnc client for X Window graphics
+  
+  
 
 # preformance
   ( TODO: benchmark )
