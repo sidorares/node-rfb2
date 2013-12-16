@@ -409,11 +409,11 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
         function readForeground() {
             // we should have background color set here
             solidBackground();
-            if (rect.subEncoding & hextile.foregroundSpeciﬁed) {
+            if (rect.subEncoding & hextile.foregroundSpecified) {
                 stream.get(bytesPerPixel, function(pixelValue)
                 {
-                    tile.foreroundColor = pixelValue;
-                    rect.foreroundColor = pixelValue;
+                    tile.foregroundColor = pixelValue;
+                    rect.foregroundColor = pixelValue;
                     readSubrects();
                 });
             } else {
@@ -453,8 +453,8 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
                 // we have color + rect data
                 stream.get(bytesPerPixel, function(pixelValue)
                 {
-                    tile.foreroundColor = pixelValue;
-                    rect.foreroundColor = pixelValue;
+                    tile.foregroundColor = pixelValue;
+                    rect.foregroundColor = pixelValue;
                     readSubrectRect();
                 });
             } else // we have just rect data
