@@ -76,7 +76,7 @@ TODO:
   - [ANSI-vnc](https://npmjs.org/package/ansi-vnc) - terminal vnc client.
   - [node-vnc](https://github.com/sidorares/node-vnc) - graphical vnc client for X Window graphics using [node X11 client](https://github.com/sidorares/node-x11).
   - [vnc.js](https://github.com/bgaff/vnc.js) - LinkedIn intern [hackday 2011 project](http://engineering.linkedin.com/javascript/vncjs-how-build-javascript-vnc-client-24-hour-hackday)
-  
+  - [rdpy](https://github.com/citronneur/rdpy) - rfb and rdp implementation in python
   
 
 # preformance
