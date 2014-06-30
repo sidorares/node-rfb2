@@ -18,7 +18,7 @@ r.on('connect', function() {
 
 r.pointerEvent(100, 100, 0); // x, y, button state (bit mask for each mouse button)
 r.keyEvent(40, 0);           // keycode, is down?
-r.clipboardUpdate('send text to remote clipboard');
+r.updateClipboard('send text to remote clipboard');
 
 // screen updates
 r.on('rect', function(rect) {
