@@ -232,7 +232,7 @@ RfbClient.prototype.setEncodings = function()
 
     // build encodings list
     // TODO: API
-    var encodings = cli.params.encodings || [rfb.encodings.raw, rfb.encodings.copyRect, rfb.encodings.pseudoDesktopSize, rfb.encodings.hextile];
+    var encodings = cli.params.encodings || [rfb.encodings.raw, rfb.encodings.copyRect, rfb.encodings.pseudoDesktopSize];
 
     stream.pack('CxS', [rfb.clientMsgTypes.setEncodings, encodings.length]);
     stream.pack(repeat('l', encodings.length), encodings);
