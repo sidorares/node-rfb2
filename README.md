@@ -3,6 +3,8 @@ node-rfb2
 
 [RFB](http://en.wikipedia.org/wiki/RFB_protocol) wire protocol client and server
 
+## Client
+
 ```js
 var rfb = require('rfb2');
 var r = rfb.createConnection({
@@ -49,6 +51,16 @@ r.requestUpdate(false, 0, 0, r.width, r.height); // incremental?, x, y, w, h
 r.end(); // close connection
 
 ```
+
+
+## Server
+
+Start the server with:
+
+    node rfbserver.js
+
+Then use a VNC client and connect to port 5910.
+
 
 # Status:
 
