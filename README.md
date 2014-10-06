@@ -59,7 +59,8 @@ Start the server with:
 
     node rfbserver.js
 
-Then use a VNC client and connect to port 5910.
+Then use a VNC client and connect to port 5910. The server requires
+the password `tetris` to access.
 
 
 # Status:
