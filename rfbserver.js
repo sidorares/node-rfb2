@@ -5,6 +5,8 @@ var PackStream = require('./unpackstream');
 var EventEmitter = require('events').EventEmitter;
 var rfb = require('./constants');
 
+var RFB_PORT = 5910;
+
 function RfbServer(stream, params)
 {
      EventEmitter.call(this);
@@ -190,4 +192,4 @@ RfbServer.prototype.expectMessage = function()
 var s = net.createServer(function(conn) {
     var rfbserv = new RfbServer(conn);
 });
-s.listen(5910);
+s.listen(RFB_PORT);
