@@ -103,7 +103,7 @@ RfbServer.prototype.writeServerInit = function()
         600, //serv.height,
         32, //serv.bpp,
         24, //serv.depth,
-        1, // bigEndien
+        1, // bigEndian
         1, // trueColor
         255, // red max
         255, // green
