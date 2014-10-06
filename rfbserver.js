@@ -192,4 +192,6 @@ RfbServer.prototype.expectMessage = function()
 var s = net.createServer(function(conn) {
     var rfbserv = new RfbServer(conn);
 });
-s.listen(RFB_PORT);
+s.listen(RFB_PORT, function () {
+    console.log('Server listening on port: ' + s.address().port);
+});
