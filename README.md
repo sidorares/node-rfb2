@@ -79,9 +79,5 @@ TODO:
   - [rdpy](https://github.com/citronneur/rdpy) - rfb and rdp implementation in python
   
 
-# preformance
-  ( TODO: benchmark )
-
-
 [![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/sidorares/node-rfb2/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
 
