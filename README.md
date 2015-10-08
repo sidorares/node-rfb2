@@ -14,7 +14,7 @@ var r = rfb.createConnection({
 r.on('connect', function() {
   console.log('successfully connected and authorised');
   console.log('remote screen name: ' + r.title + ' width:' + r.width + ' height: ' + r.height);
-};
+});
 
 r.pointerEvent(100, 100, 0); // x, y, button state (bit mask for each mouse button)
 r.keyEvent(40, 0);           // keycode, is down?
@@ -33,13 +33,13 @@ r.on('rect', function(rect) {
       // not fully implemented
       rect.on('tile', handleHextileTile); // emitted for each subtile
    }
-}
+});
 
 r.on('clipboard', function(newPasteBufData) {
   console.log('remote clipboard updated!', newPasteBufData);
 });
 
-r.on('bell' console.log.bind(null, 'Bell!!'));
+r.on('bell', console.log.bind(null, 'Bell!!'));
 
 // force update
 // updates are requested automatically after each new received update
