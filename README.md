@@ -14,7 +14,7 @@ var r = rfb.createConnection({
 r.on('connect', function() {
   console.log('successfully connected and authorised');
   console.log('remote screen name: ' + r.title + ' width:' + r.width + ' height: ' + r.height);
-};
+});
 
 r.pointerEvent(100, 100, 0); // x, y, button state (bit mask for each mouse button)
 r.keyEvent(40, 0);           // keycode, is down?
