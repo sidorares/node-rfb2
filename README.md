@@ -33,13 +33,13 @@ r.on('rect', function(rect) {
       // not fully implemented
       rect.on('tile', handleHextileTile); // emitted for each subtile
    }
-}
+});
 
 r.on('clipboard', function(newPasteBufData) {
   console.log('remote clipboard updated!', newPasteBufData);
 });
 
-r.on('bell' console.log.bind(null, 'Bell!!'));
+r.on('bell', console.log.bind(null, 'Bell!!'));
 
 // force update
 // updates are requested automatically after each new received update
