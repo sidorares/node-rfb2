@@ -16,6 +16,10 @@ r.on('connect', function() {
   console.log('remote screen name: ' + r.title + ' width:' + r.width + ' height: ' + r.height);
 });
 
+r.on('error', function(error) {
+  throw new Error(error);
+});
+
 r.pointerEvent(100, 100, 0); // x, y, button state (bit mask for each mouse button)
 r.keyEvent(40, 0);           // keycode, is down?
 r.updateClipboard('send text to remote clipboard');
@@ -33,6 +37,10 @@ r.on('rect', function(rect) {
       // not fully implemented
       rect.on('tile', handleHextileTile); // emitted for each subtile
    }
+});
+
+r.on('resize', function(rect) {
+  console.log('window size has been resized! Width: %s, Height: %s', rect.width, rect.height);
 });
 
 r.on('clipboard', function(newPasteBufData) {
@@ -77,7 +85,6 @@ TODO:
   - [node-vnc](https://github.com/sidorares/node-vnc) - graphical vnc client for X Window graphics using [node X11 client](https://github.com/sidorares/node-x11).
   - [vnc.js](https://github.com/bgaff/vnc.js) - LinkedIn intern [hackday 2011 project](http://engineering.linkedin.com/javascript/vncjs-how-build-javascript-vnc-client-24-hour-hackday)
   - [rdpy](https://github.com/citronneur/rdpy) - rfb and rdp implementation in python
-  
+
 
 [![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/sidorares/node-rfb2/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
-
