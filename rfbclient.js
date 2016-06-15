@@ -557,8 +557,8 @@ RfbClient.prototype.requestUpdate = function(incremental, x, y, width, height)
 
 RfbClient.prototype.updateClipboard = function(text) {
     var stream = this.pack_stream;
-    stream.pack('CxxxSa', [rfb.clientMsgTypes.cutText, text.length, text]);
-    stream.flush;
+    stream.pack('CxxxLa', [rfb.clientMsgTypes.cutText, text.length, text]);
+    stream.flush();
 }
 
 // TODO: move out of rfbclient
