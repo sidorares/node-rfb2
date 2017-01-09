@@ -68,7 +68,7 @@ Ready
   - record/replay to/from file
 
 In progress:
-  - Hextile, encoding support
+  - Hextile encoding support
   - Server side protocol
 
 TODO:
