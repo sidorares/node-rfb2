@@ -7,7 +7,7 @@
     "rfb"
   ],
   "homepage": "https://github.com/sidorares/node-rfb2",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "maintainers": [
     {
       "name": "Andrey Sidorov",
