@@ -12,3 +12,6 @@ logs
 results
 
 npm-debug.log
+
+.alm
+node_modules

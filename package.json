@@ -27,7 +27,11 @@
     "url": "http://github.com/sidorares/node-rfb2.git"
   },
   "main": "rfbclient.js",
+  "typings": "rfbclient",
   "engines": {
     "node": "*"
+  },
+  "devDependencies": {
+    "@types/node": "6.0.58"
   }
 }

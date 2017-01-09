@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "lib": [
+      "es6",
+      "dom"
+    ],
+    "noUnusedLocals": true,
+    "noImplicitAny": true
+  },
+  "compileOnSave": false
+}
