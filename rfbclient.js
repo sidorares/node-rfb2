@@ -304,6 +304,9 @@ RfbClient.prototype.readFbUpdate = function()
                     case rfb.encodings.hextile:
                         cli.readHextile(rect, unpackRect);
                         break;
+                    case rfb.encodings.pseudoCursor:
+                        cli.readCursor(rect, unpackRect);
+                        break;
                     default:
                         console.log('unknown encoding!!! ' + rect.encoding);
                     }
@@ -492,6 +495,23 @@ RfbClient.prototype.readCopyRect = function(rect, cb)
         rect.src = { x: src[0], y: src[1] };
         cli.emit('rect', rect);
         cb(rect);
+    });
+}
+
+RfbClient.prototype.readCursor = function(rect, cb) {
+    var stream = this.pack_stream;
+    var cli = this;
+
+    var bytesPerPixel = cli.bpp >> 3;
+    stream.get(bytesPerPixel*rect.width*rect.height, function(rawbuff)
+    {
+        rect.buffer = rect.data = rawbuff;
+        var w = (rect.width+7) >> 3
+        stream.get(w*rect.height, function(mask) {
+          rect.mask = mask;
+          cli.emit('rect', rect);
+          cb(rect);
+        })
     });
 }
 
