@@ -29,6 +29,9 @@ exports.encodings = {
     zrle : 16,
     pseudoCursor : -239,
     pseudoDesktopSize : -223,
+    tight : 7,
+    tightPng : -260,
+    lastRect: -224
 };
 
 exports.subEncodings = {
@@ -41,6 +44,19 @@ exports.subEncodings.hextile = {
     anySubrects: 8,
     subrectsColored: 16
 }
+
+exports.tightCompressions = {
+    basic: 0,
+    fill: 8,
+    jpeg: 9,
+    png: 10
+};
+
+exports.tightFilters = {
+    copy: 0,
+    palette: 1,
+    gradient: 2
+};
 
 exports.security = {
     None: 1,

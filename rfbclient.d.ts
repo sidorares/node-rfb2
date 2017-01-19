@@ -7,7 +7,9 @@ export enum encodings {
   hextile = 5,
   zrle = 16,
   pseudoCursor = -239,
-  pseudoDesktopSize = -223
+  pseudoDesktopSize = -223,
+  tight = 7,
+  tightPng = -260
 }
 
 export enum security {

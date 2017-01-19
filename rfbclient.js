@@ -8,7 +8,7 @@ var PackStream = require('./unpackstream');
 var rfb = require('./constants');
 for (var key in rfb)
 {
-     module.exports[key] = rfb[key];
+    module.exports[key] = rfb[key];
 }
 
 function RfbClient(stream, params)
@@ -51,7 +51,7 @@ RfbClient.prototype.readError = function()
 {
     var cli = this;
     this.pack_stream.readString(function(str) {
-         cli.emit('error', str);
+        cli.emit('error', str);
     });
 }
 
@@ -108,7 +108,7 @@ RfbClient.prototype.readServerVersion = function()
                 });
             }
         });
-   });
+    });
 }
 
 RfbClient.prototype.readSecurityResult = function()
@@ -133,30 +133,30 @@ RfbClient.prototype.processSecurity = function()
     var cli = this;
     // TODO: refactor and move security to external file
     switch(cli.securityType) {
-    case rfb.security.None:
-        // do nothing
-        cli.readSecurityResult();
-        break;
-    case rfb.security.VNC:
-        var sendVncChallengeResponse = function(challenge, password) {
-            var response = require('./d3des').response(challenge, password);
-            stream.pack('a', [response]).flush();
+        case rfb.security.None:
+            // do nothing
             cli.readSecurityResult();
-        }
-        stream.get(16, function(challenge) {
-            if (cli.params.password)
-                sendVncChallengeResponse(challenge, cli.params.password);
-            else if (cli.params.credentialsCallback) {
-                cli.params.credentialsCallback.call(cli, function(password) {
-                    sendVncChallengeResponse(challenge, password);
-                });
-            } else {
-                throw new Error('Server requires VNC security but no password given');
+            break;
+        case rfb.security.VNC:
+            var sendVncChallengeResponse = function(challenge, password) {
+                var response = require('./d3des').response(challenge, password);
+                stream.pack('a', [response]).flush();
+                cli.readSecurityResult();
             }
-        });
-        break;
-    default:
-        throw new Error('unknown security type: ' + cli.securityType);
+            stream.get(16, function(challenge) {
+                if (cli.params.password)
+                    sendVncChallengeResponse(challenge, cli.params.password);
+                else if (cli.params.credentialsCallback) {
+                    cli.params.credentialsCallback.call(cli, function(password) {
+                        sendVncChallengeResponse(challenge, password);
+                    });
+                } else {
+                    throw new Error('Server requires VNC security but no password given');
+                }
+            });
+            break;
+        default:
+            throw new Error('unknown security type: ' + cli.securityType);
     }
 }
 
@@ -171,20 +171,20 @@ RfbClient.prototype.clientInit = function()
     stream.unpackTo(
         cli,
         [
-        "S width",
-        "S height",
-        "C bpp", // 16-bytes pixel format
-        "C depth",
-        "C isBigEndian",
-        "C isTrueColor",
-        "S redMax",
-        "S greenMax",
-        "S blueMax",
-        "C redShift",
-        "C greenShift",
-        "C blueShift",
-        "xxx",
-        "L titleLength"
+            "S width",
+            "S height",
+            "C bpp", // 16-bytes pixel format
+            "C depth",
+            "C isBigEndian",
+            "C isTrueColor",
+            "S redMax",
+            "S greenMax",
+            "S blueMax",
+            "C redShift",
+            "C greenShift",
+            "C blueShift",
+            "xxx",
+            "L titleLength"
         ],
 
         function() {
@@ -232,8 +232,7 @@ RfbClient.prototype.setEncodings = function()
 
     // build encodings list
     // TODO: API
-    var encodings = cli.params.encodings || [rfb.encodings.raw, rfb.encodings.copyRect, rfb.encodings.pseudoDesktopSize];
-
+    var encodings = cli.params.encodings || [rfb.encodings.raw, rfb.encodings.copyRect, rfb.encodings.tightPng, rfb.encodings.tight, rfb.encodings.pseudoDesktopSize];
     stream.pack('CxS', [rfb.clientMsgTypes.setEncodings, encodings.length]);
     stream.pack(repeat('l', encodings.length), encodings);
     stream.flush();
@@ -249,12 +248,12 @@ RfbClient.prototype.expectNewMessage = function()
     var cli = this;
     stream.get(1, function(buff) {
         switch(buff[0]) {
-        case rfb.serverMsgTypes.fbUpdate: cli.readFbUpdate(); break;
-        case rfb.serverMsgTypes.setColorMap: cli.readColorMap(); break;
-        case rfb.serverMsgTypes.bell: cli.readBell(); break;
-        case rfb.serverMsgTypes.cutText: cli.readClipboardUpdate(); break;
-        default:
-            console.log('unsopported server message: ' + buff[0]);
+            case rfb.serverMsgTypes.fbUpdate: cli.readFbUpdate(); break;
+            case rfb.serverMsgTypes.setColorMap: cli.readColorMap(); break;
+            case rfb.serverMsgTypes.bell: cli.readBell(); break;
+            case rfb.serverMsgTypes.cutText: cli.readClipboardUpdate(); break;
+            default:
+                console.log('unsopported server message: ' + buff[0]);
         }
     });
 }
@@ -286,29 +285,32 @@ RfbClient.prototype.readFbUpdate = function()
             stream.unpackTo(rect,
                 ['S x', 'S y', 'S width', 'S height', 'l encoding'],
                 function() {
-
                     // TODO: rewrite using decodeHandlers
                     switch(rect.encoding) {
-                    case rfb.encodings.raw:
-                        cli.readRawRect(rect, unpackRect);
-                        break;
-                    case rfb.encodings.copyRect:
-                        cli.readCopyRect(rect, unpackRect);
-                        break;
-                    case rfb.encodings.pseudoDesktopSize:
-                        cli.width = rect.width;
-                        cli.height = rect.height;
-                        cli.emit('resize', rect);
-                        unpackRect();
-                        break;
-                    case rfb.encodings.hextile:
-                        cli.readHextile(rect, unpackRect);
-                        break;
-                    case rfb.encodings.pseudoCursor:
-                        cli.readCursor(rect, unpackRect);
-                        break;
-                    default:
-                        console.log('unknown encoding!!! ' + rect.encoding);
+                        case rfb.encodings.raw:
+                            cli.readRawRect(rect, unpackRect);
+                            break;
+                        case rfb.encodings.copyRect:
+                            cli.readCopyRect(rect, unpackRect);
+                            break;
+                        case rfb.encodings.pseudoDesktopSize:
+                            cli.width = rect.width;
+                            cli.height = rect.height;
+                            cli.emit('resize', rect);
+                            unpackRect();
+                            break;
+                        case rfb.encodings.hextile:
+                            cli.readHextile(rect, unpackRect);
+                            break;
+                        case rfb.encodings.pseudoCursor:
+                            cli.readCursor(rect, unpackRect);
+                            break;
+                        case rfb.encodings.tight:
+                        case rfb.encodings.tightPng:
+                            cli.readTight(rect, unpackRect);
+                            break;
+                        default:
+                            console.log('unknown encoding!!! ' + rect.encoding);
                     }
                 }
             );
@@ -348,10 +350,10 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
     tile.y = rect.tiley;
     tile.width = 16;
     if (tile.x == rect.widthTiles && rect.rightRectWidth > 0)
-         tile.width = rect.rightRectWidt;
+        tile.width = rect.rightRectWidt;
     tile.height = 16;
     if (tile.y == rect.heightTiles && rect.bottomRectHeight > 0)
-         tile.height = rect.bottomRectHeight;
+        tile.height = rect.bottomRectHeight;
 
     // calculate next tilex & tiley and move up 'stack' if we at the last tile
     function nextTile()
@@ -381,10 +383,10 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
         var hextile = rfb.subEncodings.hextile;
         if (tile.subEncoding & hextile.raw) {
             stream.get(tilebuflen, function(rawbuff)
-            {
+                {
                 tile.buffer = rawbuff;
                 nextTile();
-            });
+                });
             return;
         }
         tile.buffer = new Buffer(tilebuflen);
@@ -398,11 +400,11 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
         function readBackground() {
             if (tile.subEncoding & hextile.backgroundSpecified) {
                 stream.get(bytesPerPixel, function(pixelValue)
-                {
+                    {
                     tile.backgroundColor = pixelValue;
                     rect.backgroundColor = pixelValue;
                     readForeground();
-                });
+                    });
             } else {
                 tile.backgroundColor = rect.backgroundColor;
                 readForeground();
@@ -414,11 +416,11 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
             solidBackground();
             if (rect.subEncoding & hextile.foregroundSpecified) {
                 stream.get(bytesPerPixel, function(pixelValue)
-                {
+                    {
                     tile.foregroundColor = pixelValue;
                     rect.foregroundColor = pixelValue;
                     readSubrects();
-                });
+                    });
             } else {
                 tile.foregroundColor = rect.foregroundColor;
                 readSubrects();
@@ -455,11 +457,11 @@ RfbClient.prototype.readHextileTile = function(rect, cb)
             if (tile.subEncoding & hextile.subrectsColored) {
                 // we have color + rect data
                 stream.get(bytesPerPixel, function(pixelValue)
-                {
+                    {
                     tile.foregroundColor = pixelValue;
                     rect.foregroundColor = pixelValue;
                     readSubrectRect();
-                });
+                    });
             } else // we have just rect data
                 readSubrectRect();
         }
@@ -498,21 +500,114 @@ RfbClient.prototype.readCopyRect = function(rect, cb)
     });
 }
 
+RfbClient.prototype.readTight = function(rect, cb)
+{
+    var stream = this.pack_stream;
+    var cli = this;
+
+    stream.unpack('C', function(ctl) {
+        var comp = rfb.tightCompressions;
+        var cmode = 0;
+        cmp = ctl[0] >> 4;
+        switch (cmp) {
+            case comp.basic:
+                cmode = 'basic'
+                break;
+            case comp.fill:
+                cmode = 'fill'
+                break;
+            case comp.png:
+                cmode = 'png'
+                break;
+            case ctl & 0x04:
+                cmode = 'filter'
+                break;
+            case ctl < 0x04:
+                cmode = 'copy'
+                break;
+            default:
+                console.log('unknown tight comp!!! ' + ctl);
+        }
+        rect.cmode = cmode
+        switch (cmode) {
+            case 'fill':
+                cli.readTightFill(rect, cb);
+                break;
+            case 'png':
+                cli.readTightPng(rect, cb);
+                break;
+            default:
+                console.log('unsupported tight comp!!! ' + cmode);
+        }
+    });
+}
+
+RfbClient.prototype.readTightFill = function(rect, cb)
+{
+    var stream = this.pack_stream;
+    var cli = this;
+
+    stream.get(3, function(rawbuff) {
+        rect.buffer = rect.data = rawbuff; 
+        cli.emit('rect', rect);
+        cb(rect);
+    });
+}
+
+RfbClient.prototype.readTightPng = function(rect, cb)
+{
+    var stream = this.pack_stream;
+    var cli = this;
+
+    stream.unpack('C', function(lb) {
+        var len = 0;
+        var b = lb[0];
+        len = b & 0x7F;
+        if ((b & 0x80) == 0) {
+            readPng(len);
+            return;
+        }
+        stream.unpack('C', function(lb) {
+            var b = lb[0];
+            len |= (b & 0x7F) << 7;
+            if ((b & 0x80) == 0) {
+                readPng(len);
+                return;
+            }
+
+            stream.unpack('C', function(lb) {
+                var b = lb[0];
+                len |= (b & 0xFF) << 14;
+                readPng(len);
+                return;
+            });
+        });
+    });
+
+    function readPng(len) {
+        stream.get(len, function(rawbuff) {
+            rect.buffer = rect.data = rawbuff;
+            cli.emit('rect', rect);
+            cb(rect);
+        });
+    }
+}
+
 RfbClient.prototype.readCursor = function(rect, cb) {
     var stream = this.pack_stream;
     var cli = this;
 
     var bytesPerPixel = cli.bpp >> 3;
     stream.get(bytesPerPixel*rect.width*rect.height, function(rawbuff)
-    {
+        {
         rect.buffer = rect.data = rawbuff;
         var w = (rect.width+7) >> 3
         stream.get(w*rect.height, function(mask) {
-          rect.mask = mask;
-          cli.emit('rect', rect);
-          cb(rect);
+            rect.mask = mask;
+            cli.emit('rect', rect);
+            cb(rect);
         })
-    });
+        });
 }
 
 RfbClient.prototype.readRawRect = function(rect, cb)
@@ -522,11 +617,11 @@ RfbClient.prototype.readRawRect = function(rect, cb)
 
     var bytesPerPixel = cli.bpp >> 3;
     stream.get(bytesPerPixel*rect.width*rect.height, function(rawbuff)
-    {
+        {
         rect.buffer = rect.data = rawbuff;
         cli.emit('rect', rect);
         cb(rect);
-    });
+        });
 }
 
 RfbClient.prototype.readColorMap = function()
@@ -545,10 +640,10 @@ RfbClient.prototype.readClipboardUpdate = function()
     var cli = this;
 
     stream.unpack('xxxL', function(res) {
-         stream.get(res[0], function(buf) {
-             cli.emit('clipboard', buf.toString('ascii'));
-             cli.expectNewMessage();
-         })
+        stream.get(res[0], function(buf) {
+            cli.emit('clipboard', buf.toString('ascii'));
+            cli.expectNewMessage();
+        })
     });
 }
 
@@ -612,7 +707,7 @@ function createRfbStream(name)
     }
 
     pack.get(12, function(fileVersion) {
-         readData();
+        readData();
     });
 
     stream.end = function() {
@@ -673,7 +768,7 @@ function createConnection(params)
 
     var client = new RfbClient(stream, params);
     stream.on('error', function(err) {
-      client.emit('error', err);
+        client.emit('error', err);
     });
     return client;
 }
