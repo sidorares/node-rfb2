@@ -32,6 +32,6 @@
     "node": "*"
   },
   "devDependencies": {
-    "@types/node": "6.0.58"
+    "@types/node": "7.0.14"
   }
 }
