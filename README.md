@@ -1,6 +1,8 @@
 node-rfb2
 =========
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/sidorares/node-rfb2.svg)](https://greenkeeper.io/)
+
 [RFB](http://en.wikipedia.org/wiki/RFB_protocol) wire protocol client and server
 
 ```js
