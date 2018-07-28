@@ -310,7 +310,13 @@ RfbClient.prototype.readFbUpdate = function()
                             cli.readTight(rect, unpackRect);
                             break;
                         default:
+                          if (rect.encoding > rfb.encodings.pseudoJpegLow && rect.encoding < rfb.encodings.pseudoJpegHigh) {
+                            console.log('jpeg comp encoding');
+                          } else if (rect.encoding > rfb.encodings.pseudoCompLow && rect.encoding < rfb.encodings.pseudoCompHigh) {
+                            console.log('comp encoding');
+                          } else {
                             console.log('unknown encoding!!! ' + rect.encoding);
+                          }
                     }
                 }
             );
@@ -547,11 +553,13 @@ RfbClient.prototype.readTightFill = function(rect, cb)
     var stream = this.pack_stream;
     var cli = this;
 
-    stream.get(3, function(rawbuff) {
-        rect.buffer = rect.data = rawbuff; 
+    var tpixel = {};
+    stream.unpackTo(tpixel, ['C red', 'C green', 'C blue'],
+      function() {
+        rect.tpixel = tpixel
         cli.emit('rect', rect);
         cb(rect);
-    });
+      });
 }
 
 RfbClient.prototype.readTightPng = function(rect, cb)

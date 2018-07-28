@@ -31,7 +31,11 @@ exports.encodings = {
     pseudoDesktopSize : -223,
     tight : 7,
     tightPng : -260,
-    lastRect: -224
+    pseudoLastRect: -224,
+    pseudoCompHigh: -247,
+    pseudoCompLow: -255,
+    pseudoJpegHigh: -23,
+    pseudoJpegLow: -32
 };
 
 exports.subEncodings = {

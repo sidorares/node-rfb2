@@ -1,21 +1,21 @@
 {
-  "name": "rfb2",
-  "author": "Andrey Sidorov <sidorares@yandex.ru>",
-  "description": "RFB protocol client and server",
+  "name": "node-rfb",
+  "author": "Vasiliy Tolstov <v.tolstov@sdstack.com>",
+  "description": "RFB protocol client and server (fork of Andrey Sidorov node-rfb2)",
   "keywords": [
     "vnc",
     "rfb"
   ],
-  "homepage": "https://github.com/sidorares/node-rfb2",
-  "version": "0.1.0",
+  "homepage": "https://github.com/sdstack/node-rfb",
+  "version": "0.0.1",
   "maintainers": [
     {
-      "name": "Andrey Sidorov",
-      "email": "sidoares@yandex.ru"
+      "name": "Vasiliy Tolstov",
+      "email": "v.tolstov@sdstack.com"
     }
   ],
   "bugs": {
-    "url": "http://github.com/sidorares/node-rfb2/issues"
+    "url": "http://github.com/sdstack/node-rfb/issues"
   },
   "licenses": [
     {
@@ -24,7 +24,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "http://github.com/sidorares/node-rfb2.git"
+    "url": "http://github.com/sdstack/node-rfb.git"
   },
   "main": "rfbclient.js",
   "typings": "rfbclient",
