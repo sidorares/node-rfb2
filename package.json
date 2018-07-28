@@ -7,7 +7,7 @@
     "rfb"
   ],
   "homepage": "https://github.com/sdstack/node-rfb",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "maintainers": [
     {
       "name": "Vasiliy Tolstov",
