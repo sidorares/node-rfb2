@@ -1,37 +1,37 @@
 {
-  "name": "rfb2",
-  "author": "Andrey Sidorov <sidorares@yandex.ru>",
-  "description": "RFB protocol client and server",
-  "keywords": [
-    "vnc",
-    "rfb"
-  ],
-  "homepage": "https://github.com/sidorares/node-rfb2",
-  "version": "0.2.1",
-  "maintainers": [
-    {
-      "name": "Andrey Sidorov",
-      "email": "sidoares@yandex.ru"
+    "name": "rfb2",
+    "author": "Andrey Sidorov <sidorares@yandex.ru>",
+    "description": "RFB protocol client and server",
+    "keywords": [
+        "vnc",
+        "rfb"
+    ],
+    "homepage": "https://github.com/sidorares/node-rfb2",
+    "version": "0.2.1",
+    "maintainers": [
+        {
+            "name": "Andrey Sidorov",
+            "email": "sidoares@yandex.ru"
+        }
+    ],
+    "bugs": {
+        "url": "http://github.com/sidorares/node-rfb2/issues"
+    },
+    "licenses": [
+        {
+            "type": "MIT"
+        }
+    ],
+    "repository": {
+        "type": "git",
+        "url": "http://github.com/sidorares/node-rfb2.git"
+    },
+    "main": "rfbclient.js",
+    "typings": "rfbclient",
+    "engines": {
+        "node": "*"
+    },
+    "devDependencies": {
+        "@types/node": "6.0.58"
     }
-  ],
-  "bugs": {
-    "url": "http://github.com/sidorares/node-rfb2/issues"
-  },
-  "licenses": [
-    {
-      "type": "MIT"
-    }
-  ],
-  "repository": {
-    "type": "git",
-    "url": "http://github.com/sidorares/node-rfb2.git"
-  },
-  "main": "rfbclient.js",
-  "typings": "rfbclient",
-  "engines": {
-    "node": "*"
-  },
-  "devDependencies": {
-    "@types/node": "6.0.58"
-  }
 }
