@@ -77,6 +77,7 @@ TODO:
   - VNC server with [x11](https://github.com/sidorares/node-x11) and COMPOSITE/DAMAGE extensions
 
 # see also:
+  - [vnc-rfb-client](https://github.com/filipecbmoc/vnc-rfb-client)
   - [node-rfb](https://github.com/substack/node-rfb) - Substack's implementation of rfb protocol.
   - [VNC client on 200 lines of JavaScript](http://blog.mgechev.com/2013/08/30/vnc-javascript-nodejs/) - blog post and [HTML5 client](https://github.com/mgechev/js-vnc-demo-project) using node-rfb2
   - [Vnc-over-gif](https://github.com/sidorares/vnc-over-gif) - vnc to gif proxy server. Stream your screen to animated gif image!
@@ -85,6 +86,3 @@ TODO:
   - [node-vnc](https://github.com/sidorares/node-vnc) - graphical vnc client for X Window graphics using [node X11 client](https://github.com/sidorares/node-x11).
   - [vnc.js](https://github.com/bgaff/vnc.js) - LinkedIn intern [hackday 2011 project](http://engineering.linkedin.com/javascript/vncjs-how-build-javascript-vnc-client-24-hour-hackday)
   - [rdpy](https://github.com/citronneur/rdpy) - rfb and rdp implementation in python
-
-
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/sidorares/node-rfb2/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
