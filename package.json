@@ -48,12 +48,15 @@
     "format": "biome check --write .",
     "test": "node --test --test-reporter=spec \"test/*.test.ts\"",
     "test:integration": "node --test --test-reporter=spec --test-concurrency=1 \"test/integration/*.test.ts\"",
+    "servers:up": "docker compose -f docker/compose.yaml up -d --build --wait",
+    "servers:down": "docker compose -f docker/compose.yaml down",
     "check": "npm run lint && npm run typecheck && npm test",
     "prepack": "npm run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@types/node": "^22.20.5",
+    "jpeg-js": "^0.4.4",
     "typescript": "^7.0.2"
   }
 }
