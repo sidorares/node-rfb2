@@ -3,7 +3,7 @@ import type { Inflator } from '../inflator.ts'
 import { bytesPerPixel, isTightRgb, type PixelFormat, readPixel, rgbToPixels, writePixel } from '../pixel-format.ts'
 import { decodePng } from '../png.ts'
 import type { ByteReader } from '../reader.ts'
-import { fill } from './util.ts'
+import { PixelBuffer } from './util.ts'
 
 /**
  * Decodes JPEG data (Tight's lossy rects) to `width * height` pixels, 3 (RGB) or 4 (RGBA) bytes
@@ -48,9 +48,9 @@ export async function decodeTight(
 
   if (comp === FILL) {
     const pixel = toPixels(pf, await reader.read(tpixel), 1, rgb)
-    const out = Buffer.alloc(w * h * bpp)
-    fill(out, w * bpp, bpp, 0, 0, w, h, pixel)
-    return { data: out }
+    const out = new PixelBuffer(w, h, bpp)
+    out.fill(0, 0, w, h, PixelBuffer.word(pixel, 0, bpp))
+    return { data: out.data }
   }
 
   if (comp === JPEG) {
@@ -95,26 +95,28 @@ export async function decodeTight(
     }
     case PALETTE_FILTER: {
       const colors = (await reader.u8()) + 1
-      const palette = toPixels(pf, await reader.read(colors * tpixel), colors, rgb)
-      const out = Buffer.alloc(w * h * bpp)
+      const pixels = toPixels(pf, await reader.read(colors * tpixel), colors, rgb)
+      const palette = new Uint32Array(colors)
+      for (let i = 0; i < colors; i++) palette[i] = PixelBuffer.word(pixels, i * bpp, bpp)
+      const out = new PixelBuffer(w, h, bpp)
+      const words = out.words
       if (colors === 2) {
         const rowBytes = (w + 7) >> 3
         const bits = await readData(rowBytes * h)
-        for (let y = 0, d = 0; y < h; y++) {
-          for (let x = 0; x < w; x++, d += bpp) {
-            const index = ((bits[y * rowBytes + (x >> 3)] as number) >> (7 - (x & 7))) & 1
-            palette.copy(out, d, index * bpp, index * bpp + bpp)
+        for (let y = 0, i = 0; y < h; y++) {
+          for (let x = 0; x < w; x++, i++) {
+            words[i] = palette[((bits[y * rowBytes + (x >> 3)] as number) >> (7 - (x & 7))) & 1] as number
           }
         }
       } else {
         const indices = await readData(w * h)
-        for (let i = 0, d = 0; i < w * h; i++, d += bpp) {
+        for (let i = 0; i < w * h; i++) {
           const index = indices[i] as number
           if (index >= colors) throw protocolError(`${name}: palette index ${index} of ${colors} colours`)
-          palette.copy(out, d, index * bpp, index * bpp + bpp)
+          words[i] = palette[index] as number
         }
       }
-      return { data: out }
+      return { data: out.data }
     }
     case GRADIENT_FILTER: {
       if (pf.bitsPerPixel === 8) throw protocolError(`${name}: the gradient filter needs 16 or 32 bits per pixel`)
