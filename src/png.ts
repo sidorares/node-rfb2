@@ -50,7 +50,12 @@ export function decodePng(png: Buffer): PngImage {
   const bitsPerPixel = channels * depth
   const rowBytes = (width * bitsPerPixel + 7) >> 3
   const filterStride = Math.max(1, bitsPerPixel >> 3)
-  const raw = zlib.inflateSync(Buffer.concat(idat))
+  let raw: Buffer
+  try {
+    raw = zlib.inflateSync(Buffer.concat(idat))
+  } catch (err) {
+    throw protocolError(`PNG: corrupt image data (${(err as Error).message})`)
+  }
   if (raw.length < (rowBytes + 1) * height) throw protocolError('PNG: image data too short')
 
   // Undo the per-row filters in place, into `rows` (no filter bytes).

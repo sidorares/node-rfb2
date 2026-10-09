@@ -65,12 +65,17 @@ export async function decodeVMwareCursor(
   const bpp = bytesPerPixel(pf)
   const and = await reader.read(w * h * bpp)
   const xor = await reader.read(w * h * bpp)
-  const allOnes = pf.bitsPerPixel === 32 ? 0xffffffff : (1 << pf.bitsPerPixel) - 1
+  // An AND pixel with every colour bit set keeps the screen pixel: with a zero XOR it's transparent.
+  const colourBits = pf.trueColor
+    ? ((pf.redMax << pf.redShift) | (pf.greenMax << pf.greenShift) | (pf.blueMax << pf.blueShift)) >>> 0
+    : pf.bitsPerPixel === 32
+      ? 0xffffffff
+      : (1 << pf.bitsPerPixel) - 1
   const rgba = Buffer.alloc(w * h * 4)
   for (let i = 0; i < w * h; i++) {
     const a = readPixel(pf, and, i * bpp)
     const x = readPixel(pf, xor, i * bpp)
-    if (a === allOnes && x === 0) continue // transparent
+    if ((a & colourBits) >>> 0 === colourBits && (x & colourBits) === 0) continue
     const [r, g, b] = pixelToRgb(pf, x, colorMap)
     rgba[i * 4] = r
     rgba[i * 4 + 1] = g

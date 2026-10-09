@@ -32,6 +32,7 @@ export {
 export { Des, vncAuthResponse } from './des.ts'
 export type { JpegDecoder } from './encodings/tight.ts'
 export { RfbError, type RfbErrorCode } from './errors.ts'
+export { type FbsReplayOptions, recordFbs, replayFbs } from './fbs.ts'
 export { Framebuffer } from './framebuffer.ts'
 export { keysymFromChar, keysyms } from './keysyms.ts'
 export type { Screen } from './messages.ts'
@@ -43,7 +44,6 @@ export {
   pixelFormats,
   toRgba,
 } from './pixel-format.ts'
-export { decodePng } from './png.ts'
 export { ByteReader } from './reader.ts'
 export type {
   CapabilityRect,
