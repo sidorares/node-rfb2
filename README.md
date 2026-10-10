@@ -229,7 +229,9 @@ npm run servers:down
 The sources run directly on Node (type stripping): `node examples/screenshot.ts host 5900 > screen.png`.
 
 Integration tests skip servers that aren't running; CI starts them all (`.github/workflows/ci.yml`).
-Releases are published to npm from GitHub releases (`.github/workflows/release.yml`).
+Commits on `master` use [Conventional Commits](https://www.conventionalcommits.org). release-please
+opens a release PR from them; merging it tags the release and publishes to npm
+(`.github/workflows/release-please.yml`).
 
 ## See also
 

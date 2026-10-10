@@ -1,9 +1,12 @@
-# Publishes to npm when a GitHub release is published. The release tag must be v<package.json version>
-# (a prerelease version such as 1.0.0-beta.1 is published under the `next` dist-tag).
+# Publishes to npm when a GitHub release is published by hand. The release tag must be
+# v<package.json version> (a prerelease version such as 1.0.0-beta.1 is published under the
+# `next` dist-tag).
 #
-# One-time setup on npmjs.com: package settings → Trusted publishing → GitHub Actions, repository
-# sidorares/node-rfb2, workflow release.yml, environment npm. No token is needed then; until it is set
-# up, an NPM_TOKEN repository secret (an automation token) works too.
+# The regular path is release-please.yml: merging its release PR tags and publishes in that
+# same workflow. A release created by the default GITHUB_TOKEN does not start this file.
+#
+# Trusted publishing for this path: workflow filename release.yml, environment npm.
+# Until that is set up, an NPM_TOKEN repository secret (an automation token) works too.
 name: Release
 
 on:
@@ -37,6 +40,8 @@ jobs:
       - run: npm run build
       - name: Publish
         run: |
+          # An empty NPM_TOKEN must not override trusted publishing (OIDC).
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then unset NODE_AUTH_TOKEN; fi
           version="$(node -p 'require("./package.json").version')"
           tag=latest
           case "$version" in *-*) tag=next ;; esac

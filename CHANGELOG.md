@@ -45,7 +45,8 @@ A rewrite in TypeScript. The 0.x API keeps working; see "Upgrading from 0.x" in 
   against in-process servers, and the client state machine; integration tests against TigerVNC, x11vnc,
   TightVNC, TurboVNC and QEMU in Docker (`docker/`).
 - GitHub Actions: lint, typecheck, build and unit tests on Linux, macOS and Windows with Node 22, 24 and 26;
-  integration tests with the Docker servers; npm publishing with provenance from GitHub releases.
+  integration tests with the Docker servers; release-please opens the release PR, and merging it publishes
+  to npm with provenance.
 
 ## 0.2.2 and earlier
 

@@ -1,0 +1,73 @@
+# On every push to master, opens or updates one release PR from Conventional Commits
+# (feat → minor, fix → patch, feat! or BREAKING CHANGE → major). Merging that PR creates
+# the v<version> tag and GitHub release, then this workflow publishes to npm.
+#
+# The release is created with the default GITHUB_TOKEN, which does not start other
+# workflows, so publish runs here. .github/workflows/release.yml still publishes a
+# release that was published by hand.
+#
+# Repo settings this needs: Actions → General → "Read and write permissions", and
+# "Allow GitHub Actions to create and approve pull requests".
+# npm trusted publishing: workflow filename release-please.yml, environment npm.
+name: Release Please
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+
+  publish:
+    name: Publish to npm
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - run: npm ci
+      - name: Check the tag matches package.json
+        env:
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::release tag $TAG doesn't match package.json version $version"
+            exit 1
+          fi
+      - run: npm run check
+      - run: npm run build
+      - name: Publish
+        run: |
+          # An empty NPM_TOKEN must not override trusted publishing (OIDC).
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then unset NODE_AUTH_TOKEN; fi
+          version="$(node -p 'require("./package.json").version')"
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          npm publish --provenance --access public --tag "$tag"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
