@@ -1,0 +1,39 @@
+#!/bin/bash
+# x11vnc (libvncserver) sharing an Xvfb display :1 that shows the test card.
+#
+#   RFB_PORT      port to listen on (default 5910)
+#   VNC_PASSWORD  VNC password (VncAuth); unset: no authentication
+#   DESKTOP_NAME  desktop name sent in ServerInit
+set -euo pipefail
+
+port=${RFB_PORT:-5910}
+rm -f /tmp/rfb2-ready /tmp/rfb2-clipboard /tmp/.X1-lock /tmp/.X11-unix/X1
+
+# -noreset: an X server resets (black root, default cursor) when its last client leaves.
+Xvfb :1 -screen 0 "${GEOMETRY:-1000x750}x24" -dpi 96 -nolisten tcp -noreset -s 0 &
+rfb2-x11-setup 1 noready
+
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  auth=(-passwd "$VNC_PASSWORD")
+else
+  auth=(-nopw)
+fi
+
+# x11vnc avoids XFIXES (the real cursor shape) until it believes a window manager runs; there is
+# none here, so it would send its built-in arrow instead of the test cursor.
+export X11VNC_AVOID_WINDOWS=never
+
+# Ready after one warm-up session (see rfb2-x11vnc-warmup).
+(rfb2-x11vnc-warmup "$port" ${VNC_PASSWORD:+"$VNC_PASSWORD"} && touch /tmp/rfb2-ready) &
+
+# -cursor most / -cursorpos: cursor shape (XFIXES) and position updates for clients that ask.
+# -noncache: no client-side caching area below the screen (the framebuffer stays 1000x750).
+# Latency of a new client's first full frame (~0.5 s by default, 1.5-4 s once x11vnc has been
+# idle for a minute; ~0.15 s with these):
+#   -threads        a libvncserver thread per client accepts and answers update requests at once,
+#                   instead of between the main loop's screen polls (which sleep while idle)
+#   -nonap -sb 0    no longer naps, and no 1.5 s throttling after a minute without screen changes
+#   -wait/-defer    10 ms between screen polls and before sending updates
+exec x11vnc -display :1 -rfbport "$port" -desktop "${DESKTOP_NAME:-rfb2 x11vnc}" "${auth[@]}" \
+  -forever -shared -noncache -nowf -cursor most -cursorpos -xfixes -noxrecord -nolookup -norc \
+  -threads -nonap -sb 0 -wait 10 -defer 10 -quiet "$@"

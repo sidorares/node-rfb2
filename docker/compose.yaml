@@ -1,0 +1,167 @@
+# RFB (VNC) test servers for node-rfb2's integration tests: see README.md.
+#
+#   docker compose -f docker/compose.yaml up -d --build --wait
+#   docker compose -f docker/compose.yaml down
+#
+# Every port is published on 127.0.0.1 only. Each host port can be moved with an environment
+# variable (e.g. RFB2_PORT_TIGERVNC=25901) when something else already listens there.
+# TEST-ONLY credentials: password rfb2test; Unix user rfb / rfb2test; certs in certs/.
+
+name: rfb2-test
+
+x-healthcheck: &healthcheck
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 60s
+  start_interval: 1s
+
+x-tigervnc: &tigervnc
+  image: rfb2-test/tigervnc:local
+  build: { context: ., target: tigervnc }
+  init: true
+
+x-x11vnc: &x11vnc
+  image: rfb2-test/x11vnc:local
+  build: { context: ., target: x11vnc }
+  init: true
+
+x-tightvnc: &tightvnc
+  image: rfb2-test/tightvnc:local
+  build: { context: ., target: tightvnc }
+  init: true
+
+x-qemu: &qemu
+  image: rfb2-test/qemu:local
+  build: { context: ., target: qemu }
+  init: true
+
+services:
+  # --- TigerVNC (Xvnc) --------------------------------------------------------------------------
+  tigervnc:
+    hostname: tigervnc
+    <<: *tigervnc
+    environment:
+      RFB_PORT: 5901
+      SECURITY_TYPES: None
+      DESKTOP_NAME: rfb2 tigervnc
+    ports: ["127.0.0.1:${RFB2_PORT_TIGERVNC:-15901}:5901"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5901"] }
+
+  tigervnc-vnc:
+    hostname: tigervnc-vnc
+    <<: *tigervnc
+    environment:
+      RFB_PORT: 5902
+      SECURITY_TYPES: VncAuth
+      VNC_PASSWORD: rfb2test
+      DESKTOP_NAME: rfb2 tigervnc-vnc
+    ports: ["127.0.0.1:${RFB2_PORT_TIGERVNC_VNC:-15902}:5902"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5902"] }
+
+  tigervnc-vencrypt:
+    hostname: tigervnc-vencrypt
+    <<: *tigervnc
+    environment:
+      RFB_PORT: 5903
+      SECURITY_TYPES: X509Plain,X509Vnc,X509None,TLSPlain,TLSVnc,TLSNone,Plain,VncAuth
+      VNC_PASSWORD: rfb2test
+      DESKTOP_NAME: rfb2 tigervnc-vencrypt
+    ports: ["127.0.0.1:${RFB2_PORT_TIGERVNC_VENCRYPT:-15903}:5903"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5903"] }
+
+  tigervnc-ra2:
+    hostname: tigervnc-ra2
+    <<: *tigervnc
+    environment:
+      RFB_PORT: 5904
+      SECURITY_TYPES: RA2_256,RA2,RA2ne_256,RA2ne
+      VNC_PASSWORD: rfb2test
+      DESKTOP_NAME: rfb2 tigervnc-ra2
+    ports: ["127.0.0.1:${RFB2_PORT_TIGERVNC_RA2:-15904}:5904"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5904"] }
+
+  tigervnc-ra2-user:
+    hostname: tigervnc-ra2-user
+    <<: *tigervnc
+    environment:
+      RFB_PORT: 5905
+      SECURITY_TYPES: RA2_256,RA2,RA2ne_256,RA2ne
+      REQUIRE_USERNAME: 1
+      DESKTOP_NAME: rfb2 tigervnc-ra2-user
+    ports: ["127.0.0.1:${RFB2_PORT_TIGERVNC_RA2_USER:-15905}:5905"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5905"] }
+
+  # --- x11vnc (libvncserver) on Xvfb ------------------------------------------------------------
+  x11vnc:
+    hostname: x11vnc
+    <<: *x11vnc
+    environment:
+      RFB_PORT: 5910
+      DESKTOP_NAME: rfb2 x11vnc
+    ports: ["127.0.0.1:${RFB2_PORT_X11VNC:-15910}:5910"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5910"] }
+
+  x11vnc-vnc:
+    hostname: x11vnc-vnc
+    <<: *x11vnc
+    environment:
+      RFB_PORT: 5911
+      VNC_PASSWORD: rfb2test
+      DESKTOP_NAME: rfb2 x11vnc-vnc
+    ports: ["127.0.0.1:${RFB2_PORT_X11VNC_VNC:-15911}:5911"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5911"] }
+
+  # --- TightVNC 1.3 (Xtightvnc) -----------------------------------------------------------------
+  tightvnc:
+    hostname: tightvnc
+    <<: *tightvnc
+    environment:
+      RFB_PORT: 5920
+      VNC_PASSWORD: rfb2test
+      DESKTOP_NAME: rfb2 tightvnc
+    ports: ["127.0.0.1:${RFB2_PORT_TIGHTVNC:-15920}:5920"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5920"] }
+
+  tightvnc-none:
+    hostname: tightvnc-none
+    <<: *tightvnc
+    environment:
+      RFB_PORT: 5921
+      DESKTOP_NAME: rfb2 tightvnc-none
+    ports: ["127.0.0.1:${RFB2_PORT_TIGHTVNC_NONE:-15921}:5921"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5921"] }
+
+  # --- TurboVNC (Xvnc, official .deb) -----------------------------------------------------------
+  turbovnc:
+    hostname: turbovnc
+    image: rfb2-test/turbovnc:local
+    build: { context: ., target: turbovnc }
+    init: true
+    environment:
+      RFB_PORT: 5930
+      SECURITY_TYPES: None
+      DESKTOP_NAME: rfb2 turbovnc
+    ports: ["127.0.0.1:${RFB2_PORT_TURBOVNC:-15930}:5930"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5930"] }
+
+  # --- QEMU (built-in VNC server; SeaBIOS "No bootable device") -----------------------------------
+  qemu:
+    hostname: qemu
+    <<: *qemu
+    environment:
+      RFB_PORT: 5940
+      POWER_CONTROL: "on"
+      DESKTOP_NAME: rfb2 qemu
+    ports: ["127.0.0.1:${RFB2_PORT_QEMU:-15940}:5940"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5940"] }
+
+  qemu-vnc:
+    hostname: qemu-vnc
+    <<: *qemu
+    environment:
+      RFB_PORT: 5941
+      VNC_PASSWORD: rfb2test
+      DESKTOP_NAME: rfb2 qemu-vnc
+    ports: ["127.0.0.1:${RFB2_PORT_QEMU_VNC:-15941}:5941"]
+    healthcheck: { <<: *healthcheck, test: [CMD, rfb2-healthcheck, "5941"] }

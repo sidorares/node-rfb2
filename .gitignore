@@ -3,3 +3,5 @@ dist
 coverage
 *.log
 .DS_Store
+# Pixel dumps written when an integration frame does not match
+test/integration/out/
