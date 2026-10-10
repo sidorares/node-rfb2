@@ -59,8 +59,10 @@ export async function decodeTight(
     return { data: fromRgb(pf, await decodeJpeg(jpeg, w, h), w, h, 'JPEG') }
   }
 
-  if (png) {
-    if (comp !== PNG_OR_NO_ZLIB) throw protocolError(`TightPNG: invalid compression control 0x${control.toString(16)}`)
+  // TightPNG is Tight plus PngCompression (high nibble 0xA). Fill, JPEG and basic
+  // compression stay valid: QEMU sends basic compression for an 8-bit client, which
+  // cannot carry a PNG. 0xA means "no zlib" only for plain Tight.
+  if (png && comp === PNG_OR_NO_ZLIB) {
     const image = decodePng(await reader.read(await compactLength(reader)))
     if (image.width !== w || image.height !== h) {
       throw protocolError(`TightPNG: a ${image.width}×${image.height} PNG for a ${w}×${h} rect`)

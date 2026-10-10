@@ -47,6 +47,10 @@ for (const [server, expected] of EXPECTED) {
         for (const [name, encoding] of ENCODINGS) {
           const frame = await grabFrame(server.port, { encodings: [encoding], pixelFormat })
           for (const e of frame.used) used.add(e)
+          // QEMU's TightPNG palette loads a big-endian client pixel as a host-endian
+          // word (ui/vnc-enc-tight.c write_png_palette), which swaps red and green and
+          // drops blue. Those PNG bytes are not the Raw pixels.
+          if (server === qemu && pixelFormat.bigEndian && encoding === E.tightPng) continue
           assertSameFrame(frame.fb, reference.fb, `${server.name} ${formatName} ${name}`)
         }
         if (formatName === 'bgrx') {

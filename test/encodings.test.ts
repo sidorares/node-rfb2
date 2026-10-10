@@ -388,13 +388,16 @@ describe('pixel encodings round trip', () => {
               item(E.tightPng, w, h, enc.png(encodePng(w, h, indices, { colorType: 3, bitDepth: 4, palette }))),
             )
             expected.push(asImage(modelPixels(pf, colours, 3, w * h)))
-            // Fill and JPEG work as in Tight.
+            // Fill, JPEG and basic compression work as in Tight.
             const fill = solidImage(pf, w, h, seed + w)
             items.push(item(E.tightPng, w, h, await enc.encode(fill, pf, { method: 'fill' })))
             expected.push(fill)
             items.push(item(E.tightPng, w, h, enc.jpeg(Buffer.from('fake jpeg'))))
             expected.push(asImage(modelPixels(pf, decodeJpeg(Buffer.alloc(9), w, h), 3, w * h)))
           }
+          const copy = noiseImage(pf, 8, 8, seed + 3)
+          items.push(item(E.tightPng, copy.width, copy.height, await enc.encode(copy, pf, { method: 'copy' })))
+          expected.push(copy)
           enc.close()
           await roundTrip('TightPNG', items, expected, pf, seed + 7, new Decoder({ decodeJpeg }))
         })
@@ -964,9 +967,10 @@ describe('malformed rects reject with PROTOCOL_ERROR', () => {
     await rejectsWith(E.tight, 2, 2, bytes([0x40, 2, 0, 0, 0, 0]), pf, /gradient filter needs 16 or 32/)
   })
 
-  test('TightPNG: basic compression, a PNG of the wrong size, a corrupt PNG', async () => {
-    await rejectsWith(E.tightPng, 2, 2, bytes([0x00, 0, 0, 0, 0]), bgrx, /invalid compression control/)
-    await rejectsWith(E.tightPng, 2, 2, bytes([0x40, 0, 0, 0, 0]), bgrx, /invalid compression control/)
+  test('TightPNG: an invalid control, a PNG of the wrong size, a corrupt PNG', async () => {
+    for (const control of [0xb0, 0xc0, 0xd0, 0xf0]) {
+      await rejectsWith(E.tightPng, 2, 2, bytes([control, 0, 0, 0, 0]), bgrx, /invalid compression control/)
+    }
     const png = encodePng(3, 2, new Array(18).fill(9), { colorType: 2, bitDepth: 8 })
     await rejectsWith(E.tightPng, 2, 2, bytes([0xa0], compactLength(png.length), png), bgrx, /3×2 PNG for a 2×2 rect/)
     const bad = Buffer.from(png)

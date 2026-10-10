@@ -61,7 +61,11 @@ const PW = ['--password', 'rfb2test']
 const SERVICES = [
   ['tigervnc', 15901, ['--compare', TESTCARD]],
   ['tigervnc-vnc', 15902, [...PW, '--compare', TESTCARD]],
-  ['tigervnc-vencrypt', 15903, ['--vencrypt', '262', '--user', 'rfb', ...PW, '--ca', join(HERE, 'certs/test-ca.pem'), '--compare', TESTCARD]],
+  [
+    'tigervnc-vencrypt',
+    15903,
+    ['--vencrypt', '262', '--user', 'rfb', ...PW, '--ca', join(HERE, 'certs/test-ca.pem'), '--compare', TESTCARD],
+  ],
   ['tigervnc-ra2', 15904, []],
   ['tigervnc-ra2-user', 15905, []],
   ['x11vnc', 15910, ['--compare', TESTCARD]],
@@ -262,7 +266,7 @@ async function startTLS(r, socket, anon) {
         ca: opt.ca ? readFileSync(opt.ca) : undefined,
         servername: net.isIP(host) ? undefined : host,
         rejectUnauthorized: Boolean(opt.ca),
-        checkServerIdentity: (h, cert) => tls.checkServerIdentity(host, cert),
+        checkServerIdentity: (_h, cert) => tls.checkServerIdentity(host, cert),
       }
   const t = tls.connect(options)
   await new Promise((resolve, reject) => {
@@ -282,7 +286,18 @@ async function startTLS(r, socket, anon) {
   return t
 }
 
-const PF32 = { bpp: 32, depth: 24, bigEndian: 0, trueColour: 1, rmax: 255, gmax: 255, bmax: 255, rshift: 16, gshift: 8, bshift: 0 }
+const PF32 = {
+  bpp: 32,
+  depth: 24,
+  bigEndian: 0,
+  trueColour: 1,
+  rmax: 255,
+  gmax: 255,
+  bmax: 255,
+  rshift: 16,
+  gshift: 8,
+  bshift: 0,
+}
 
 function parsePF(b) {
   return {
@@ -611,7 +626,9 @@ async function main() {
     const t1 = performance.now()
     const fb = await fetchFramebuffer(r, width, height)
     const ms = Math.round(performance.now() - t1)
-    console.log(`framebuffer: ${fb.width}x${fb.height} Raw in ${fb.updates} update(s), ${ms} ms after the request (${at()})`)
+    console.log(
+      `framebuffer: ${fb.width}x${fb.height} Raw in ${fb.updates} update(s), ${ms} ms after the request (${at()})`,
+    )
     if (opt.png) {
       writeFileSync(opt.png, encodePNG(fb.width, fb.height, fb.rgb))
       console.log(`wrote ${opt.png}`)
