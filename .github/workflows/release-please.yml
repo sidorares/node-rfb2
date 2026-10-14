@@ -14,6 +14,13 @@ name: Release Please
 on:
   push:
     branches: [master]
+  # Publishes an existing release tag again (e.g. after a failed publish), from this same
+  # workflow so npm's trusted publishing still accepts it.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish to npm, e.g. v1.0.0
+        required: true
 
 permissions:
   contents: write
@@ -26,6 +33,7 @@ concurrency:
 
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -37,13 +45,15 @@ jobs:
   publish:
     name: Publish to npm
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: >-
+      always() &&
+      (github.event_name == 'workflow_dispatch' || needs.release-please.outputs.release_created == 'true')
     runs-on: ubuntu-latest
     environment: npm
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -52,7 +62,7 @@ jobs:
       - run: npm ci
       - name: Check the tag matches package.json
         env:
-          TAG: ${{ needs.release-please.outputs.tag_name }}
+          TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
         run: |
           version="$(node -p 'require("./package.json").version')"
           if [ "v$version" != "$TAG" ]; then

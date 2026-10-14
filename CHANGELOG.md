@@ -1,6 +1,17 @@
 # Changelog
 
-### Details
+## [1.0.0](https://github.com/sidorares/node-rfb2/compare/v0.2.2...v1.0.0) (2026-10-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* rects arrive in bgrx unless pixelFormat is set (0.x echoed the server's format), every encoding is decoded to pixels, errors are RfbError objects, FBS recording moved to recordFbs()/replayFbs(), and Node.js 22.12 or later is required. The 0.x API (createConnection and its events) keeps working; see "Upgrading from 0.x" in the README.
+
+### Features
+
+* rewrite the RFB client in TypeScript ([d2171ed](https://github.com/sidorares/node-rfb2/commit/d2171ed93164af772cf2e36fcda4d83271ea96c5))
+
+### 1.0.0 in detail
 
 A rewrite in TypeScript. The 0.x API keeps working; see "Upgrading from 0.x" in the README for what changed.
 
@@ -47,17 +58,6 @@ A rewrite in TypeScript. The 0.x API keeps working; see "Upgrading from 0.x" in 
 - GitHub Actions: lint, typecheck, build and unit tests on Linux, macOS and Windows with Node 22, 24 and 26;
   integration tests with the Docker servers; release-please opens the release PR, and merging it publishes
   to npm with provenance.
-
-## [1.0.0](https://github.com/sidorares/node-rfb2/compare/rfb2-v0.2.2...rfb2-v1.0.0) (2026-10-14)
-
-
-### ⚠ BREAKING CHANGES
-
-* rects arrive in bgrx unless pixelFormat is set (0.x echoed the server's format), every encoding is decoded to pixels, errors are RfbError objects, FBS recording moved to recordFbs()/replayFbs(), and Node.js 22.12 or later is required. The 0.x API (createConnection and its events) keeps working; see "Upgrading from 0.x" in the README.
-
-### Features
-
-* rewrite the RFB client in TypeScript ([d2171ed](https://github.com/sidorares/node-rfb2/commit/d2171ed93164af772cf2e36fcda4d83271ea96c5))
 
 ## 0.2.2 and earlier
 
