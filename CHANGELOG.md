@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased (next major)
+### Details
 
 A rewrite in TypeScript. The 0.x API keeps working; see "Upgrading from 0.x" in the README for what changed.
 
-### Protocol
+#### Protocol
 
 - Protocol versions 3.3, 3.7 and 3.8 are negotiated (0.x always answered 3.8); 3.889 (Apple) and 4.x
   (RealVNC) servers get 3.8. UltraVNC repeaters (`repeaterId`).
@@ -19,7 +19,7 @@ A rewrite in TypeScript. The 0.x API keeps working; see "Upgrading from 0.x" in 
   clipboard), xvp, compression and JPEG quality levels.
 - Server messages: EndOfContinuousUpdates, ServerFence (answered automatically), xvp, QEMU audio.
 
-### API
+#### API
 
 - `connect()` returns a promise; `createConnection()` and the 0.x events still work.
 - The client chooses the pixel format (`pixelFormat`, default `bgrx`) instead of echoing the server's.
@@ -37,7 +37,7 @@ A rewrite in TypeScript. The 0.x API keeps working; see "Upgrading from 0.x" in 
 - `createServer()` / `RfbServerConnection`: a usable server side (0.x's `rfbserver.js` started listening on
   import with a fixed password).
 
-### Project
+#### Project
 
 - ES module with type declarations, built from `src/` with TypeScript; Node.js 22.12 or later
   (`require('rfb2')` works there too).
