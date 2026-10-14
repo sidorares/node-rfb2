@@ -1,0 +1,25 @@
+#!/bin/bash
+# TightVNC 1.3 Xtightvnc (Debian tightvncserver) on display :1, showing the test card.
+#
+#   RFB_PORT      port to listen on (default 5920)
+#   VNC_PASSWORD  VNC password; unset: no authentication
+#   DESKTOP_NAME  desktop name sent in ServerInit
+set -euo pipefail
+
+port=${RFB_PORT:-5920}
+rm -f /tmp/rfb2-ready /tmp/rfb2-clipboard /tmp/.X1-lock /tmp/.X11-unix/X1
+
+args=(
+  :1 -geometry "${GEOMETRY:-1000x750}" -depth 24 -dpi 96
+  -rfbport "$port" -desktop "${DESKTOP_NAME:-rfb2 tightvnc}"
+  -alwaysshared -nolisten tcp -s 0 -fp /usr/share/fonts/X11/misc/
+)
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  mkdir -p "$HOME/.vnc"
+  printf '%s\n' "$VNC_PASSWORD" | tightvncpasswd -f > "$HOME/.vnc/passwd"
+  chmod 600 "$HOME/.vnc/passwd"
+  args+=(-rfbauth "$HOME/.vnc/passwd")
+fi
+
+rfb2-x11-setup 1 &
+exec Xtightvnc "${args[@]}" "$@"

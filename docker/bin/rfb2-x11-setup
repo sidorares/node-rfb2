@@ -1,0 +1,30 @@
+#!/bin/bash
+# rfb2-x11-setup DISPLAY_NUMBER [noready]: waits for the X server on :N, puts up the test card,
+# cursor and pointer position (rfb2-xsetup), starts rfb2-clipboard (once), then marks the container
+# ready for rfb2-healthcheck
+# (unless "noready": the caller does that later). The start scripts run it in the background and
+# then exec the server.
+set -u
+n=${1:?usage: rfb2-x11-setup DISPLAY_NUMBER [noready]}
+ready=${2:-ready}
+for _ in $(seq 400); do
+  [ -S "/tmp/.X11-unix/X$n" ] && break
+  sleep 0.05
+done
+[ -S "/tmp/.X11-unix/X$n" ] || { echo "rfb2-x11-setup: no X server on :$n" >&2; exit 1; }
+for _ in $(seq 100); do
+  DISPLAY=":$n" rfb2-xsetup /usr/share/rfb2/testcard.ppm /usr/share/rfb2/cursor.xbm \
+    /usr/share/rfb2/cursor-mask.xbm && {
+    # rfb2-clipboard takes over every selection / cut buffer change, so the server announces a
+    # ClientCutText from one VNC client to the others (src/rfb2-clipboard.c). It draws nothing.
+    if [ ! -e /tmp/rfb2-clipboard ]; then
+      touch /tmp/rfb2-clipboard
+      DISPLAY=":$n" rfb2-clipboard &
+    fi
+    [ "$ready" = noready ] || touch /tmp/rfb2-ready
+    exit 0
+  }
+  sleep 0.1
+done
+echo "rfb2-x11-setup: rfb2-xsetup failed" >&2
+exit 1

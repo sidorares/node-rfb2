@@ -1,0 +1,27 @@
+#!/bin/bash
+# TurboVNC Xvnc (official release .deb, /opt/TurboVNC) on display :1, showing the test card.
+#
+#   RFB_PORT        port to listen on (default 5930)
+#   SECURITY_TYPES  TurboVNC -securitytypes list (default None)
+#   VNC_PASSWORD    VNC password (for VNC / TLSVnc / X509Vnc types)
+#   DESKTOP_NAME    desktop name sent in ServerInit
+set -euo pipefail
+
+port=${RFB_PORT:-5930}
+rm -f /tmp/rfb2-ready /tmp/rfb2-clipboard /tmp/.X1-lock /tmp/.X11-unix/X1
+
+args=(
+  :1 -geometry "${GEOMETRY:-1000x750}" -depth 24 -dpi 96
+  -rfbport "$port" -desktop "${DESKTOP_NAME:-rfb2 turbovnc}"
+  -securitytypes "${SECURITY_TYPES:-None}"
+  -alwaysshared -nolisten tcp -noreset -s 0
+)
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  mkdir -p "$HOME/.vnc"
+  printf '%s\n' "$VNC_PASSWORD" | /opt/TurboVNC/bin/vncpasswd -f > "$HOME/.vnc/passwd"
+  chmod 600 "$HOME/.vnc/passwd"
+  args+=(-rfbauth "$HOME/.vnc/passwd")
+fi
+
+rfb2-x11-setup 1 &
+exec /opt/TurboVNC/bin/Xvnc "${args[@]}" "$@"

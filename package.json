@@ -1,37 +1,62 @@
 {
-    "name": "rfb2",
-    "author": "Andrey Sidorov <sidorares@yandex.ru>",
-    "description": "RFB protocol client and server",
-    "keywords": [
-        "vnc",
-        "rfb"
-    ],
-    "homepage": "https://github.com/sidorares/node-rfb2",
-    "version": "0.2.2",
-    "maintainers": [
-        {
-            "name": "Andrey Sidorov",
-            "email": "sidoares@yandex.ru"
-        }
-    ],
-    "bugs": {
-        "url": "http://github.com/sidorares/node-rfb2/issues"
+  "name": "rfb2",
+  "version": "0.2.2",
+  "description": "RFB (VNC) protocol client and server for Node.js: every common encoding and security type, typed, promise-based",
+  "keywords": [
+    "vnc",
+    "rfb",
+    "remote-framebuffer",
+    "zrle",
+    "tight",
+    "hextile",
+    "vencrypt",
+    "apple-remote-desktop",
+    "qemu"
+  ],
+  "homepage": "https://github.com/sidorares/node-rfb2#readme",
+  "bugs": {
+    "url": "https://github.com/sidorares/node-rfb2/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sidorares/node-rfb2.git"
+  },
+  "license": "MIT",
+  "author": "Andrey Sidorov <sidorares@yandex.ru>",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
-    "licenses": [
-        {
-            "type": "MIT"
-        }
-    ],
-    "repository": {
-        "type": "git",
-        "url": "http://github.com/sidorares/node-rfb2.git"
-    },
-    "main": "rfbclient.js",
-    "typings": "rfbclient",
-    "engines": {
-        "node": "*"
-    },
-    "devDependencies": {
-        "@types/node": "6.0.58"
-    }
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "node --test --test-reporter=spec \"test/*.test.ts\"",
+    "test:integration": "node --test --test-reporter=spec --test-concurrency=1 \"test/integration/*.test.ts\"",
+    "servers:up": "docker compose -f docker/compose.yaml up -d --build --wait",
+    "servers:down": "docker compose -f docker/compose.yaml down",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.15",
+    "@types/node": "^22.20.5",
+    "jpeg-js": "^0.4.4",
+    "typescript": "^7.0.2"
+  }
 }

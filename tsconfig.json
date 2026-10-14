@@ -1,12 +1,24 @@
 {
+  // Type-checks the library, tests, examples and scripts. Node runs the .ts files directly (type
+  // stripping) in tests, so: erasable syntax only, explicit .ts import extensions, ESM.
+  // `npm run build` (tsconfig.build.json) emits dist/ from src/ for publishing.
   "compilerOptions": {
-    "target": "es5",
-    "lib": [
-      "es6",
-      "dom"
-    ],
-    "noUnusedLocals": true,
-    "noImplicitAny": true
+    "target": "es2023",
+    "lib": ["es2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "isolatedModules": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true
   },
-  "compileOnSave": false
+  "include": ["src", "test", "examples", "scripts"]
 }

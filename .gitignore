@@ -1,17 +1,7 @@
-lib-cov
-*.seed
-*.log
-*.csv
-*.dat
-*.out
-*.pid
-*.gz
-
-pids
-logs
-results
-
-npm-debug.log
-
-.alm
 node_modules
+dist
+coverage
+*.log
+.DS_Store
+# Pixel dumps written when an integration frame does not match
+test/integration/out/

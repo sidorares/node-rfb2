@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "6eaaeb3dd3f05ecc251575ec886e684309562dcc",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "rfb2",
+      "include-v-in-tag": true
+    }
+  }
+}

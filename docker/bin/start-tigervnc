@@ -1,0 +1,35 @@
+#!/bin/bash
+# TigerVNC Xvnc (Debian tigervnc-standalone-server) on display :1, showing the test card.
+#
+#   RFB_PORT          port to listen on (default 5901)
+#   SECURITY_TYPES    TigerVNC -SecurityTypes list (default None)
+#   VNC_PASSWORD      VNC password (VncAuth, TLSVnc, X509Vnc, RA2* without a username)
+#   REQUIRE_USERNAME  1: the RA2* types ask for a username + password, checked by PAM (user rfb)
+#   DESKTOP_NAME      desktop name sent in ServerInit
+#
+# Plain, TLSPlain, X509Plain (and RA2* with REQUIRE_USERNAME=1) authenticate the Unix user rfb
+# through PAM (service "tigervnc"). Xvnc runs as rfb: pam_unix can only check the password of the
+# user it runs as (through unix_chkpwd), so rfb is the only user that can log in.
+set -euo pipefail
+
+port=${RFB_PORT:-5901}
+rm -f /tmp/rfb2-ready /tmp/rfb2-clipboard /tmp/.X1-lock /tmp/.X11-unix/X1
+
+args=(
+  :1 -geometry "${GEOMETRY:-1000x750}" -depth 24 -dpi 96
+  -rfbport "$port" -desktop "${DESKTOP_NAME:-rfb2 tigervnc}"
+  -SecurityTypes "${SECURITY_TYPES:-None}"
+  -AlwaysShared -UseBlacklist=0 -nolisten tcp -noreset -s 0
+  -X509Cert /etc/rfb2/certs/test-server.pem -X509Key /etc/rfb2/certs/test-server-key.pem
+  -RSAKey /etc/rfb2/certs/test-server-key.pem
+  -PAMService tigervnc -PlainUsers rfb -RequireUsername="${REQUIRE_USERNAME:-0}"
+)
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  mkdir -p "$HOME/.vnc"
+  printf '%s\n' "$VNC_PASSWORD" | tigervncpasswd -f > "$HOME/.vnc/passwd"
+  chmod 600 "$HOME/.vnc/passwd"
+  args+=(-PasswordFile "$HOME/.vnc/passwd")
+fi
+
+rfb2-x11-setup 1 &
+exec Xtigervnc "${args[@]}" "$@"

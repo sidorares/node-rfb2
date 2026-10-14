@@ -1,0 +1,11 @@
+#!/bin/bash
+# Docker healthcheck: healthy once the start script has finished setting up the screen
+# (/tmp/rfb2-ready) and the server on 127.0.0.1:$1 answers with an "RFB xxx.yyy" banner.
+set -u
+port=${1:?usage: rfb2-healthcheck PORT}
+[ -e /tmp/rfb2-ready ] || exit 1
+exec 3<>"/dev/tcp/127.0.0.1/$port" || exit 1
+IFS= read -r -t 5 -n 12 banner <&3 || exit 1
+exec 3>&-
+[[ $banner =~ ^RFB\ [0-9]{3}\.[0-9]{3}$ ]] || { echo "unexpected banner: $banner" >&2; exit 1; }
+echo "$banner"

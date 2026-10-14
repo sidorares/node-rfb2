@@ -1,0 +1,50 @@
+# Publishes to npm when a GitHub release is published by hand. The release tag must be
+# v<package.json version> (a prerelease version such as 1.0.0-beta.1 is published under the
+# `next` dist-tag).
+#
+# The regular path is release-please.yml: merging its release PR tags and publishes in that
+# same workflow. A release created by the default GITHUB_TOKEN does not start this file.
+#
+# Trusted publishing for this path: workflow filename release.yml, environment npm.
+# Until that is set up, an NPM_TOKEN repository secret (an automation token) works too.
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11
+      - run: npm ci
+      - name: Check the tag matches package.json
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::release tag $GITHUB_REF_NAME doesn't match package.json version $version"
+            exit 1
+          fi
+      - run: npm run check
+      - run: npm run build
+      - name: Publish
+        run: |
+          # An empty NPM_TOKEN must not override trusted publishing (OIDC).
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then unset NODE_AUTH_TOKEN; fi
+          version="$(node -p 'require("./package.json").version')"
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          npm publish --provenance --access public --tag "$tag"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

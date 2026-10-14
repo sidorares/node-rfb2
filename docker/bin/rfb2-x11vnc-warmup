@@ -1,0 +1,85 @@
+#!/usr/bin/perl
+# rfb2-x11vnc-warmup PORT [PASSWORD]: one short RFB session against the local x11vnc at start-up.
+#
+# x11vnc only polls the X display (pointer position, cursor shape, screen) while a client is
+# connected, and it only fetches the cursor shape (XFIXES) when the cursor changes. Without this,
+# clients get x11vnc's built-in 18x18 arrow instead of the test cursor, and the first client gets it
+# drawn at x11vnc's initial pointer position. This client connects (None or VncAuth; DES through
+# openssl's legacy provider) asking for cursor shape updates, runs rfb2-xsetup again (a cursor
+# change and a repaint that x11vnc now sees), keeps asking for 1x1 updates for a second and leaves.
+use strict;
+use warnings;
+use IO::Select;
+use IO::Socket::INET;
+use IPC::Open2;
+
+my ($port, $password) = @ARGV;
+die "usage: rfb2-x11vnc-warmup PORT [PASSWORD]\n" unless $port;
+
+my $s;
+for (1 .. 100) {
+  $s = IO::Socket::INET->new(PeerAddr => '127.0.0.1', PeerPort => $port, Timeout => 5) and last;
+  select(undef, undef, undef, 0.1);
+}
+die "rfb2-x11vnc-warmup: cannot connect to port $port\n" unless $s;
+binmode $s;
+
+sub rd {
+  my ($n) = @_;
+  my $buf = '';
+  while (length($buf) < $n) {
+    my $r = sysread($s, $buf, $n - length($buf), length($buf));
+    die "rfb2-x11vnc-warmup: connection closed\n" unless $r;
+  }
+  return $buf;
+}
+
+sub vnc_response {
+  my ($pw, $challenge) = @_;
+  my $key = substr($pw . ("\0" x 8), 0, 8);
+  # each key byte bit-reversed, as VNC authentication expects
+  my $hex = join '', map { sprintf '%02x', ord(pack('b8', unpack('B8', $_))) } split //, $key;
+  my $pid = open2(my $out, my $in, 'openssl', 'enc', '-des-ecb', '-K', $hex, '-nopad',
+    '-provider', 'legacy', '-provider', 'default');
+  binmode $in;
+  binmode $out;
+  print $in $challenge;
+  close $in;
+  local $/;
+  my $response = <$out>;
+  waitpid $pid, 0;
+  die "rfb2-x11vnc-warmup: DES failed\n" unless defined $response && length($response) == 16;
+  return $response;
+}
+
+rd(12);
+syswrite $s, "RFB 003.008\n";
+my $n = ord rd(1);
+die "rfb2-x11vnc-warmup: connection refused\n" unless $n;
+my %types = map { ord($_) => 1 } split //, rd($n);
+if ($types{1}) {
+  syswrite $s, chr(1);
+} elsif ($types{2} && defined $password) {
+  syswrite $s, chr(2);
+  syswrite $s, vnc_response($password, rd(16));
+} else {
+  die "rfb2-x11vnc-warmup: no usable security type\n";
+}
+die "rfb2-x11vnc-warmup: authentication failed\n" unless unpack('N', rd(4)) == 0;
+syswrite $s, chr(1);                                   # ClientInit, shared
+my $init = rd(24);
+rd(unpack('N', substr($init, 20, 4)));                 # desktop name
+# SetEncodings [Raw, Cursor, XCursor, PointerPos]: x11vnc tracks the cursor for clients that want it
+syswrite $s, pack('CCn', 2, 0, 4) . pack('N4', 0, -239 & 0xffffffff, -240 & 0xffffffff, -232 & 0xffffffff);
+my $sel = IO::Select->new($s);
+sub drain {
+  syswrite $s, pack('CCnnnn', 3, $_[0], 0, 0, 1, 1);  # FramebufferUpdateRequest 1x1
+  while ($sel->can_read(0.1)) {
+    sysread($s, my $junk, 65536) or die "rfb2-x11vnc-warmup: connection closed\n";
+  }
+}
+drain(0) for 1 .. 3;
+system('rfb2-x11-setup', '1', 'noready') == 0 or die "rfb2-x11vnc-warmup: rfb2-xsetup failed\n";
+drain(1) for 1 .. 10;
+close $s;
+print "rfb2-x11vnc-warmup: done\n";

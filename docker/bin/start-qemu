@@ -1,0 +1,47 @@
+#!/bin/bash
+# QEMU (Debian qemu-system-x86): an x86 PC with std VGA under TCG that boots the bootcard floppy
+# (src/bootcard.asm): a static 80x25 VGA text test card (720x400 pixels), no text cursor, no
+# blinking, CPU halted. QEMU's built-in VNC server shows it.
+#
+#   RFB_PORT       port to listen on (default 5940)
+#   VNC_PASSWORD   VNC password (VncAuth); unset: no authentication
+#   POWER_CONTROL  on: enable the XVP extension (shutdown / reboot / reset from the client; a reset
+#                  reboots into the same screen)
+#   DESKTOP_NAME   QEMU -name; the VNC desktop name is "QEMU (<name>)"
+#
+# Ready once the boot sector has written "rfb2-bootcard ready" to the debug port 0x402 (the same
+# port SeaBIOS logs to), i.e. once the screen is final.
+set -euo pipefail
+
+port=${RFB_PORT:-5940}
+rm -f /tmp/rfb2-ready /tmp/debugcon.log
+
+vnc=":$((port - 5900)),audiodev=snd0,share=force-shared"
+args=(
+  -nodefaults -machine pc -accel tcg -m 16 -vga std -no-shutdown
+  -name "${DESKTOP_NAME:-rfb2 qemu}"
+  -drive file=/usr/share/rfb2/bootcard.img,format=raw,if=floppy,readonly=on -boot order=a
+  -audiodev none,id=snd0
+  -chardev file,id=debugcon,path=/tmp/debugcon.log -device isa-debugcon,iobase=0x402,chardev=debugcon
+)
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  args+=(-object "secret,id=vncpw,data=$VNC_PASSWORD")
+  vnc+=",password-secret=vncpw"
+fi
+if [ "${POWER_CONTROL:-off}" = on ]; then
+  vnc+=",power-control=on"
+fi
+
+(
+  until [ -e /tmp/debugcon.log ]; do sleep 0.1; done
+  tail -n +1 -F /tmp/debugcon.log 2>/dev/null | while IFS= read -r line; do
+    case $line in
+      *"rfb2-bootcard ready"*)
+        echo "start-qemu: boot card on screen"
+        touch /tmp/rfb2-ready
+        ;;
+    esac
+  done
+) &
+
+exec qemu-system-x86_64 "${args[@]}" -vnc "$vnc" "$@"
