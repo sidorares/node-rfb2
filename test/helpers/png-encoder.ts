@@ -4,21 +4,9 @@
 
 import zlib from 'node:zlib'
 
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[n] = c >>> 0
-  }
-  return table
-})()
-
 /** CRC-32 (ISO 3309, as PNG uses it) of the concatenation of `parts`. */
 export function crc32(...parts: Uint8Array[]): number {
-  let c = 0xffffffff
-  for (const part of parts) for (const byte of part) c = (CRC_TABLE[(c ^ byte) & 0xff] as number) ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
+  return parts.reduce((crc, part) => zlib.crc32(part, crc), 0)
 }
 
 export type PngColorType = 0 | 2 | 3 | 4 | 6

@@ -126,18 +126,6 @@ export function meanDifference(a: Framebuffer, b: Framebuffer): number {
   return sum / ((x.length / 4) * 3)
 }
 
-const crcTable = Array.from({ length: 256 }, (_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c >>> 0
-})
-
-function crc32(b: Buffer): number {
-  let c = 0xffffffff
-  for (const byte of b) c = (crcTable[(c ^ byte) & 0xff] as number) ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-
 /** Writes a framebuffer as an RGB PNG under test/integration/out (for looking at failures). */
 export function writePng(file: string, fb: Framebuffer): void {
   const rgba = fb.toRgba()
@@ -151,7 +139,7 @@ export function writePng(file: string, fb: Framebuffer): void {
     head.writeUInt32BE(data.length)
     head.write(type, 4, 'latin1')
     const crc = Buffer.alloc(4)
-    crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])))
+    crc.writeUInt32BE(zlib.crc32(data, zlib.crc32(head.subarray(4))))
     return Buffer.concat([head, data, crc])
   }
   const ihdr = Buffer.alloc(13)

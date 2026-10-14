@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import zlib from 'node:zlib'
 import { RfbError } from '../src/errors.ts'
 import { decodePng } from '../src/png.ts'
 import { randInt, rng } from './helpers/encoders.ts'
@@ -160,12 +159,6 @@ describe('decodePng', () => {
     const png = encodePng(5, 3, img.samples, { colorType: 2, bitDepth: 8, filter: 1 })
     const trailing = Buffer.concat([png, pngChunk('IDAT', Buffer.from('not zlib data at all'))])
     assert.deepEqual(decodePng(trailing).rgba, img.rgba)
-  })
-
-  test('the CRC-32 helper matches zlib', () => {
-    const data = Buffer.from('The quick brown fox jumps over the lazy dog')
-    assert.equal(crc32(data), zlib.crc32(data))
-    assert.equal(crc32(data.subarray(0, 10), data.subarray(10)), zlib.crc32(data))
   })
 
   describe('errors', () => {

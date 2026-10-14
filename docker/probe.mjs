@@ -33,7 +33,7 @@ import { dirname, join } from 'node:path'
 import tls from 'node:tls'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
-import { deflateSync, inflateSync } from 'node:zlib'
+import { crc32, deflateSync, inflateSync } from 'node:zlib'
 
 const { values: opt, positionals } = parseArgs({
   allowPositionals: true,
@@ -333,16 +333,6 @@ const describePF = (pf) =>
   `r${pf.rmax}<<${pf.rshift} g${pf.gmax}<<${pf.gshift} b${pf.bmax}<<${pf.bshift}`
 
 // --- PNG ------------------------------------------------------------------------------------------
-const CRC = new Int32Array(256).map((_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-  return c
-})
-function crc32(buf) {
-  let c = -1
-  for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8)
-  return (c ^ -1) >>> 0
-}
 function chunk(type, data) {
   const td = Buffer.concat([Buffer.from(type, 'latin1'), data])
   return Buffer.concat([u32(data.length), td, u32(crc32(td))])
