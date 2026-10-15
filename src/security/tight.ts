@@ -1,5 +1,5 @@
 import { security as S } from '../constants.ts'
-import { RfbError } from '../errors.ts'
+import { protocolError, RfbError } from '../errors.ts'
 import type { ByteReader } from '../reader.ts'
 import { plainAuth, vncAuth } from './basic.ts'
 import type { SecurityContext, SecurityOutcome } from './types.ts'
@@ -13,6 +13,9 @@ export interface TightCapability {
 }
 
 export async function readCapabilities(reader: ByteReader, count: number): Promise<TightCapability[]> {
+  // The lists in ServerInit have U16 counts; the tunnel and authentication lists' U32 counts get the
+  // same bound (servers send a handful), so a count doesn't make the client wait for gigabytes.
+  if (count > 0xffff) throw protocolError(`a list of ${count} Tight capabilities`)
   const data = await reader.read(16 * count)
   return Array.from({ length: count }, (_, i) => ({
     code: data.readInt32BE(16 * i),

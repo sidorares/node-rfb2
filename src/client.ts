@@ -1,3 +1,4 @@
+import buffer from 'node:buffer'
 import { EventEmitter } from 'node:events'
 import net from 'node:net'
 import type { Duplex } from 'node:stream'
@@ -7,6 +8,7 @@ import { audioFormats, encodings as E, fenceFlags, security as S, serverMsgTypes
 import { Decoder, isKnownEncoding, pixelEncodings } from './decoder.ts'
 import type { JpegDecoder } from './encodings/tight.ts'
 import { protocolError, RfbError } from './errors.ts'
+import { zlibBound } from './inflator.ts'
 import type { Screen } from './messages.ts'
 import * as msg from './messages.ts'
 import {
@@ -88,6 +90,12 @@ export interface ConnectOptions {
   decodeJpeg?: JpegDecoder
   /** Highest protocol version to agree to (default 3.8). */
   maxVersion?: ProtocolVersion
+  /**
+   * The longest clipboard text taken from the server, in bytes (default 10 MiB). Longer text is
+   * dropped, and a `warning` event says so; it is never buffered or inflated past this. With the
+   * Extended Clipboard it is also the size the client announces it takes unasked.
+   */
+  maxClipboardBytes?: number
 }
 
 /** Encodings offered by default: every lossless encoding (best first) and the pseudo-encodings that change nothing unasked. */
@@ -170,6 +178,8 @@ export type RfbClientEvents = {
   xvp: [message: { version: number; code: number }]
   endOfContinuousUpdates: []
   audio: [event: AudioEvent]
+  /** A problem the connection survived: clipboard text over `maxClipboardBytes` was dropped (`CLIPBOARD_TOO_LARGE`). */
+  warning: [warning: RfbError]
   error: [error: RfbError]
   /** The connection is closed; `hadError` when an `error` event came first. */
   close: [hadError: boolean]
@@ -183,7 +193,7 @@ const CLIP = {
   notify: 1 << 27,
   provide: 1 << 28,
 } as const
-/** The largest clipboard text accepted unasked. */
+/** The default `maxClipboardBytes`. */
 const CLIPBOARD_LIMIT = 10 * 1024 * 1024
 
 const handlers: Record<number, SecurityHandler> = {
@@ -278,6 +288,7 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
     /** A notify without text is due: the server reporting that the client's change took its text away. */
     echo: false,
   }
+  readonly #maxClipboard: number
   #onAbort = () => {
     if (this.#state === 'connecting') this.#abort(new RfbError('ABORTED', 'the connection was aborted'))
     else this.destroy()
@@ -298,6 +309,13 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
       }
       validatePixelFormat(typeof pf === 'string' ? pixelFormats[pf] : pf)
     }
+    const maxClipboard = options.maxClipboardBytes ?? CLIPBOARD_LIMIT
+    // Text up to this many bytes still fits in a JavaScript string.
+    const longest = buffer.constants.MAX_STRING_LENGTH
+    if (!Number.isSafeInteger(maxClipboard) || maxClipboard < 0 || maxClipboard > longest) {
+      throw new RfbError('INVALID_ARGUMENT', `maxClipboardBytes must be a whole number of bytes from 0 to ${longest}`)
+    }
+    this.#maxClipboard = maxClipboard
     this.#decoder = new Decoder({ decodeJpeg: options.decodeJpeg })
     options.signal?.addEventListener('abort', this.#onAbort, { once: true })
     void this.#run()
@@ -986,14 +1004,42 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
   }
 
   async #readCutText(t: Transport): Promise<void> {
-    const length = (await t.reader.read(7)).readInt32BE(3)
-    const size = Math.abs(length)
-    if (size > 64 * 1024 * 1024) throw protocolError(`a ${size}-byte clipboard message`)
-    const data = await t.reader.read(size)
+    const r = t.reader
+    const length = (await r.read(7)).readInt32BE(3)
+    const max = this.#maxClipboard
     if (length >= 0) {
+      // Latin-1 text, which the spec doesn't limit: past maxClipboardBytes it's dropped as it arrives.
       this.#serverOwnsClipboard(true)
-      this.emit('clipboard', data.toString('latin1'))
-    } else this.#extendedClipboard(data)
+      if (length > max) {
+        await r.skip(length)
+        this.#clipboardTooLarge(`${length} bytes`)
+        return
+      }
+      this.emit('clipboard', (await r.read(length)).toString('latin1'))
+      return
+    }
+    // Extended Clipboard: flags, then (provide) zlib data. The text taken inflates to at most a size
+    // field and `max` bytes; a message with more zlib data than that can need is dropped unread too.
+    // Only a provide carries that much, so the server has a new clipboard of its own.
+    const size = -length
+    if (size > 4 + zlibBound(4 + max)) {
+      await r.skip(size)
+      this.#serverOwnsClipboard(true)
+      this.#clipboardTooLarge(`a ${size}-byte Extended Clipboard message`)
+      return
+    }
+    this.#extendedClipboard(await r.read(size))
+  }
+
+  #clipboardTooLarge(size: string): void {
+    const max = this.#maxClipboard
+    this.emit(
+      'warning',
+      new RfbError(
+        'CLIPBOARD_TOO_LARGE',
+        `dropped the server's clipboard text (${size}): it is over maxClipboardBytes (${max}); raise maxClipboardBytes to receive it`,
+      ),
+    )
   }
 
   #extendedClipboard(data: Buffer): void {
@@ -1014,7 +1060,7 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
       this.supports.unicodeClipboard = (formats & CLIP.text) !== 0 && (flags & CLIP.notify) !== 0
       const caps = Buffer.alloc(8)
       caps.writeUInt32BE((CLIP.caps | CLIP.text | CLIP.request | CLIP.peek | CLIP.notify | CLIP.provide) >>> 0, 0)
-      caps.writeUInt32BE(CLIPBOARD_LIMIT, 4)
+      caps.writeUInt32BE(this.#maxClipboard, 4)
       this.#send(msg.clientCutTextExtended(caps))
     } else if (flags & CLIP.request) {
       if (formats & CLIP.text && this.#clipboard.text !== null) this.#provideClipboard()
@@ -1033,28 +1079,39 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
         if (!echo) this.emit('clipboardEmpty')
       }
     } else if (flags & CLIP.provide) {
-      let body: Buffer
-      try {
-        body = zlib.inflateSync(data.subarray(4), { finishFlush: zlib.constants.Z_SYNC_FLUSH })
-      } catch (err) {
-        throw protocolError(`corrupt Extended Clipboard data (${(err as Error).message})`)
-      }
-      for (let bit = 0, o = 0; bit < 16 && o + 4 <= body.length; bit++) {
-        if (!(formats & (1 << bit))) continue
-        const size = body.readUInt32BE(o)
-        const value = body.subarray(o + 4, o + 4 + size)
-        o += 4 + size
-        if (bit === 0) {
-          const end = value.indexOf(0)
-          const text = value.toString('utf8', 0, end < 0 ? value.length : end).replace(/\r\n/g, '\n')
-          this.#serverOwnsClipboard(true)
-          this.emit('clipboard', text)
-        }
-      }
+      // Only text is taken (the caps announce no other format). It comes first, as a U32 size and
+      // that many bytes, so inflating stops after 4 + max bytes rather than decompressing all the
+      // server sent: a few hundred KB of zlib data can hold gigabytes.
       if (!(formats & CLIP.text)) {
         this.#serverOwnsClipboard(false)
         this.emit('clipboardEmpty')
+        return
       }
+      // The server has new text, whether or not it fits: the client's own text is stale either way.
+      this.#serverOwnsClipboard(true)
+      const max = this.#maxClipboard
+      let body: Buffer
+      try {
+        body = zlib.inflateSync(data.subarray(4), {
+          finishFlush: zlib.constants.Z_SYNC_FLUSH,
+          maxOutputLength: 4 + max,
+        })
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') {
+          this.#clipboardTooLarge(`more than ${max} bytes`)
+          return
+        }
+        throw protocolError(`corrupt Extended Clipboard data (${(err as Error).message})`)
+      }
+      if (body.length < 4) return
+      const size = body.readUInt32BE(0)
+      if (size > max) {
+        this.#clipboardTooLarge(`${size} bytes`)
+        return
+      }
+      const value = body.subarray(4, 4 + size)
+      const end = value.indexOf(0)
+      this.emit('clipboard', value.toString('utf8', 0, end < 0 ? value.length : end).replace(/\r\n/g, '\n'))
     }
   }
 

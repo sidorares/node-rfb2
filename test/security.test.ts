@@ -244,6 +244,17 @@ describe('Tight security type', () => {
     client.destroy()
   })
 
+  test('a capability list longer than any server sends is refused before it is read', async () => {
+    const { clientStream, peer } = pair()
+    const connecting = connect({ stream: clientStream, security: [S.Tight] })
+    assert.equal(await offer(peer, S.Tight), S.Tight)
+    peer.write(u32(0x10000000))
+    await assert.rejects(
+      connecting,
+      (err: RfbError) => err.code === 'PROTOCOL_ERROR' && /268435456 Tight capabilities/.test(err.message),
+    )
+  })
+
   test('no auth types means None', async () => {
     const { clientStream, peer } = pair()
     const connecting = connect({ stream: clientStream, security: [S.Tight] })

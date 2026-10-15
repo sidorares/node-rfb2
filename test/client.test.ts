@@ -16,6 +16,7 @@ import {
   RfbError,
   type Update,
 } from '../src/index.ts'
+import { zlibBomb } from './helpers/encoders.ts'
 import {
   acceptNone,
   connected,
@@ -768,6 +769,152 @@ describe('Extended Clipboard state', () => {
   })
 })
 
+describe('clipboard limits', () => {
+  const CAPS = 1 << 24
+  const NOTIFY = 1 << 27
+  const PROVIDE = 1 << 28
+  const TEXT = 1
+  /** An Extended Clipboard ServerCutText: flags and payload. */
+  const ext = (flags: number, payload: Buffer = Buffer.alloc(0)) =>
+    Buffer.concat([u8(3, 0, 0, 0), s32(-(4 + payload.length)), u32(flags), payload])
+  /** A provide of `text` (with its NUL, if any), the size field `size` (default: its length). */
+  const provide = (text: Buffer, size = text.length) =>
+    ext(PROVIDE | TEXT, zlib.deflateSync(Buffer.concat([u32(size), text])))
+  /** Server caps (text up to 1 MB, every action) and the client's caps in reply. */
+  const exchangeCaps = async (peer: Peer) => {
+    peer.write(ext(CAPS | TEXT | NOTIFY | PROVIDE, u32(1 << 20)))
+    return peer.read(16)
+  }
+  /** Resolves once a bell sent now arrives, i.e. everything sent before it was handled. */
+  const roundTrip = (client: RfbClient, peer: Peer) => {
+    const bell = next(client, 'bell')
+    peer.write(u8(2))
+    return bell
+  }
+  /** Peak RSS growth while `fn` runs, in MiB. */
+  const peakGrowth = async (fn: () => Promise<unknown>) => {
+    const before = process.resourceUsage().maxRSS
+    await fn()
+    return (process.resourceUsage().maxRSS - before) / 1024
+  }
+
+  test('an Extended Clipboard bomb is dropped with a warning, without inflating it', async () => {
+    // A U32 size and 512 MiB of text in about 520 KB of zlib data, against the 10 MiB the client announces.
+    const bomb = await zlibBomb(512, { fill: 0x61, head: u32(512 << 20), end: true })
+    const { client, peer } = await connected()
+    assert.equal((await exchangeCaps(peer)).readUInt32BE(12), 10 * 1024 * 1024)
+    const texts: string[] = []
+    client.on('clipboard', (text) => texts.push(text))
+    const warning = next<RfbError>(client, 'warning')
+    const grew = await peakGrowth(async () => {
+      peer.write(ext(PROVIDE | TEXT, bomb))
+      await roundTrip(client, peer)
+    })
+    const w = await warning
+    assert.equal(w.code, 'CLIPBOARD_TOO_LARGE')
+    assert.match(w.message, /more than 10485760 bytes.*over maxClipboardBytes \(10485760\).*raise maxClipboardBytes/)
+    assert.deepEqual(texts, [])
+    assert.equal(client.connected, true)
+    assert.ok(grew < 128, `peak RSS grew by ${grew.toFixed(0)} MiB`)
+    client.destroy()
+  })
+
+  test('maxClipboardBytes is announced, and text over it is dropped: UTF-8 and Latin-1', async () => {
+    const { client, peer } = await connected({ maxClipboardBytes: 100 })
+    assert.equal((await exchangeCaps(peer)).readUInt32BE(12), 100)
+    const texts: string[] = []
+    const warnings: string[] = []
+    client.on('clipboard', (text) => texts.push(text))
+    client.on('warning', (w) => warnings.push(`${w.code}: ${w.message}`))
+    // UTF-8 with the NUL: 100 bytes are taken, 101 are not; nor is a size field over the limit.
+    peer.write(provide(Buffer.from(`${'é'.repeat(49)}x\0`)))
+    peer.write(provide(Buffer.from(`${'y'.repeat(100)}\0`)))
+    peer.write(provide(Buffer.from('short\0'), 5000))
+    // Latin-1: 100 bytes are taken, 101 are dropped.
+    peer.write(u8(3, 0, 0, 0), u32(100), Buffer.alloc(100, 0x61))
+    peer.write(u8(3, 0, 0, 0), u32(101), Buffer.alloc(101, 0x62))
+    await roundTrip(client, peer)
+    assert.deepEqual(texts, [`${'é'.repeat(49)}x`, 'a'.repeat(100)])
+    assert.deepEqual(warnings, [
+      "CLIPBOARD_TOO_LARGE: dropped the server's clipboard text (more than 100 bytes): it is over maxClipboardBytes (100); raise maxClipboardBytes to receive it",
+      "CLIPBOARD_TOO_LARGE: dropped the server's clipboard text (5000 bytes): it is over maxClipboardBytes (100); raise maxClipboardBytes to receive it",
+      "CLIPBOARD_TOO_LARGE: dropped the server's clipboard text (101 bytes): it is over maxClipboardBytes (100); raise maxClipboardBytes to receive it",
+    ])
+    client.destroy()
+  })
+
+  test('a long ServerCutText is skipped as it arrives, never buffered', async () => {
+    const { client, peer } = await connected({ maxClipboardBytes: 1000 })
+    const warning = next<RfbError>(client, 'warning')
+    // 60 MiB, written as one 64 KiB buffer over and over: only the client could hold it all.
+    const chunk = Buffer.alloc(64 * 1024, 0x61)
+    const grew = await peakGrowth(async () => {
+      peer.write(u8(3, 0, 0, 0), u32(960 * chunk.length))
+      for (let i = 0; i < 960; i++) peer.stream.write(chunk)
+      await roundTrip(client, peer)
+    })
+    assert.match((await warning).message, /\(62914560 bytes\)/)
+    assert.ok(grew < 32, `peak RSS grew by ${grew.toFixed(0)} MiB`)
+    client.destroy()
+  })
+
+  test('an Extended Clipboard message longer than the text it may hold is skipped unread', async () => {
+    const { client, peer } = await connected({ maxClipboardBytes: 100 })
+    await exchangeCaps(peer)
+    const texts: string[] = []
+    const warnings: string[] = []
+    client.on('clipboard', (text) => texts.push(text))
+    client.on('warning', (w) => warnings.push(w.message))
+    // Not even zlib data: it is never inflated.
+    peer.write(ext(PROVIDE | TEXT, Buffer.alloc(5000, 0xff)))
+    peer.write(provide(Buffer.from('fits\0')))
+    // A provide of formats other than text carries no text to deliver.
+    peer.write(ext(PROVIDE | 2, zlib.deflateSync(Buffer.concat([u32(4), Buffer.from('rtf\0')]))))
+    await roundTrip(client, peer)
+    assert.deepEqual(texts, ['fits'])
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0] as string, /\(a 5004-byte Extended Clipboard message\)/)
+    client.destroy()
+  })
+
+  test('text dropped as too large still ends the client holding the clipboard', async () => {
+    const REQUEST = 1 << 25
+    const PEEK = 1 << 26
+    /** The client's next Extended Clipboard message: its flags. */
+    const clientFlags = async (peer: Peer) => {
+      const head = await peer.read(8)
+      return (await peer.read(-head.readInt32BE(4))).readUInt32BE(0)
+    }
+    for (const tooLarge of [
+      provide(Buffer.from(`${'z'.repeat(50)}\0`)),
+      Buffer.concat([u8(3, 0, 0, 0), u32(50), Buffer.alloc(50, 0x7a)]),
+    ]) {
+      const { client, peer } = await connected({ maxClipboardBytes: 10 })
+      await exchangeCaps(peer)
+      const warning = next<RfbError>(client, 'warning')
+      client.updateClipboard('mine')
+      assert.equal(await clientFlags(peer), (PROVIDE | TEXT) >>> 0, 'the client offers its text')
+      peer.write(tooLarge)
+      assert.equal((await warning).code, 'CLIPBOARD_TOO_LARGE')
+      // The server's clipboard is newer: a request gets no provide, and a peek says the client holds nothing.
+      peer.write(ext(REQUEST | TEXT), ext(PEEK))
+      assert.equal(await clientFlags(peer), NOTIFY)
+      await roundTrip(client, peer)
+      assert.equal(peer.reader.available, 0)
+      client.destroy()
+    }
+  })
+
+  test('maxClipboardBytes must be a whole number of bytes a string can hold', () => {
+    for (const value of [-1, 1.5, Number.NaN, 2 ** 32]) {
+      assert.throws(
+        () => new RfbClient({ stream: pair().clientStream, maxClipboardBytes: value }),
+        (err: RfbError) => err.code === 'INVALID_ARGUMENT' && /maxClipboardBytes/.test(err.message),
+      )
+    }
+  })
+})
+
 describe('closing and errors', () => {
   test('a clean close by the server is not an error', async () => {
     const { client, peer } = await connected()
@@ -808,6 +955,24 @@ describe('closing and errors', () => {
     const error = next<RfbError>(client, 'error')
     peer.write(fbUpdate(1, rectHeader(0, 0, 1, 1, 99)))
     assert.equal((await error).code, 'UNSUPPORTED_ENCODING')
+  })
+
+  test('zlib data that inflates past its rect ends the connection with PROTOCOL_ERROR', async () => {
+    const { client, peer } = await connected({}, { width: 256, height: 256 })
+    const events: string[] = []
+    client.on('error', (e) => events.push(`error ${e.code}: ${e.message}`))
+    client.on('close', (hadError) => events.push(`close ${hadError}`))
+    const closed = new Promise((resolve) => client.once('close', resolve))
+    // 64 MiB of zeros for a 256×256 rect of 256 KiB.
+    const bomb = await zlibBomb(64)
+    peer.write(fbUpdate(1, rectHeader(0, 0, 256, 256, E.zlib), u32(bomb.length), bomb))
+    await closed
+    assert.equal(events.length, 2)
+    assert.match(
+      events[0] as string,
+      /^error PROTOCOL_ERROR: zlib data decoded to at least \d+ bytes where 262144 were expected$/,
+    )
+    assert.equal(events[1], 'close true')
   })
 
   test('close() resolves once closed, and end() is the 0.x way', async () => {

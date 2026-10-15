@@ -17,6 +17,8 @@
  * - `UNSUPPORTED_BY_SERVER`: a method needs an extension the server hasn't confirmed (see `client.supports`)
  * - `PROTOCOL_ERROR`: malformed data on the wire
  * - `INVALID_ARGUMENT`: a bad option or method argument
+ * - `CLIPBOARD_TOO_LARGE`: (a `warning`, the connection goes on) the server's clipboard text was over
+ *   `maxClipboardBytes` and was dropped
  */
 export type RfbErrorCode =
   | 'CONNECTION_FAILED'
@@ -35,6 +37,7 @@ export type RfbErrorCode =
   | 'UNSUPPORTED_BY_SERVER'
   | 'PROTOCOL_ERROR'
   | 'INVALID_ARGUMENT'
+  | 'CLIPBOARD_TOO_LARGE'
 
 export interface RfbErrorOptions {
   cause?: unknown

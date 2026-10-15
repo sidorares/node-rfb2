@@ -67,6 +67,7 @@ is the 0.x name for it.
 | `initialUpdate` | `true` | request the whole screen right after connecting |
 | `autoUpdate` | `false` | request the next incremental update after each update |
 | `decodeJpeg` | | turns Tight JPEG rects into pixels (see [JPEG](#jpeg)) |
+| `maxClipboardBytes` | 10 MiB | the longest clipboard text taken from the server; longer text is dropped (never buffered or inflated past this) with a `CLIPBOARD_TOO_LARGE` `warning`. With the Extended Clipboard it's also the size the client announces it takes unasked |
 | `timeout` | none | fail with `TIMEOUT` when the handshake takes longer (ms) |
 | `signal` | | an `AbortSignal` that closes the connection |
 | `repeaterId` | | the ID to send to an UltraVNC repeater, e.g. `'ID:1234'` |
@@ -156,8 +157,8 @@ const client = await connect({
 | `close()`, `end()`, `destroy()` | `close()` resolves once closed |
 
 Events: `connect`, `rect`, `update`, `resize`, `cursor`, `cursorPosition`, `desktopName`, `ledState`,
-`colormap`, `bell`, `clipboard`, `clipboardEmpty`, `fence`, `xvp`, `audio`, `endOfContinuousUpdates`, `error`,
-`close`.
+`colormap`, `bell`, `clipboard`, `clipboardEmpty`, `fence`, `xvp`, `audio`, `endOfContinuousUpdates`, `warning`,
+`error`, `close`.
 
 The server's clipboard arrives as `clipboard` with its text (`''` when the server sends empty text). With
 the Extended Clipboard, `clipboardEmpty` says that it changed and holds no text: it was emptied, or holds
@@ -177,6 +178,14 @@ holds the server's own explanation when it sent one.
 
 During the handshake they reject `connect()` (or are emitted as `error`). Afterwards they're `error` events,
 followed by `close`. A server that closes the connection between messages just causes `close`.
+
+A `warning` event is an `RfbError` the connection survives. Its one code is `CLIPBOARD_TOO_LARGE`: the
+server's clipboard text was over `maxClipboardBytes` and was dropped.
+
+Sizes from the wire are checked before they cost memory or time: zlib data (Zlib, ZRLE, Tight, TightPNG,
+the Extended Clipboard) stops inflating at the most the rect or clipboard text can hold, a JPEG must
+be the size of its rect before it reaches `decodeJpeg`, and malformed data fails the connection with
+`PROTOCOL_ERROR`.
 
 ## Recording
 

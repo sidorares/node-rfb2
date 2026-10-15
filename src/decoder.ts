@@ -5,7 +5,7 @@ import { decodeRre } from './encodings/rre.ts'
 import { decodeTight, type JpegDecoder } from './encodings/tight.ts'
 import { decodeTrle, decodeZrle } from './encodings/trle.ts'
 import { protocolError, RfbError } from './errors.ts'
-import { Inflator } from './inflator.ts'
+import { checkZlibLength, Inflator } from './inflator.ts'
 import type { Screen } from './messages.ts'
 import { bytesPerPixel, type Color, type PixelFormat } from './pixel-format.ts'
 import type { ByteReader } from './reader.ts'
@@ -192,8 +192,9 @@ export class Decoder {
       case E.hextile:
         return { data: await decodeHextile(reader, w, h, bpp) }
       case E.zlib: {
-        const compressed = await reader.read(await reader.u32())
-        return { data: await this.#zlib.inflate(compressed, w * h * bpp) }
+        const length = await reader.u32()
+        checkZlibLength(length, w * h * bpp, 'Zlib')
+        return { data: await this.#zlib.inflate(await reader.read(length), w * h * bpp) }
       }
       case E.trle:
         return { data: await decodeTrle(reader, w, h, pf) }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { RfbError } from '../src/errors.ts'
 import { decodePng } from '../src/png.ts'
-import { randInt, rng } from './helpers/encoders.ts'
+import { randInt, rng, zlibBomb } from './helpers/encoders.ts'
 import {
   crc32,
   encodePng,
@@ -212,6 +212,34 @@ describe('decodePng', () => {
       // Fix the IHDR CRC so only the size is wrong.
       patched.writeUInt32BE(crc32(patched.subarray(12, 12 + 4 + 13)), 12 + 4 + 13)
       assert.throws(() => decodePng(patched), isProtocolError(/too short/))
+    })
+
+    test('an IHDR that is short, or has a bit depth its colour type does not allow', () => {
+      const short = Buffer.concat([PNG_SIGNATURE, pngChunk('IHDR', good.subarray(16, 21)), good.subarray(33)])
+      assert.throws(() => decodePng(short), isProtocolError(/IHDR/))
+      const badDepth = Buffer.from(good)
+      badDepth[8 + 8 + 8] = 4 // RGB at 4 bits
+      assert.throws(() => decodePng(badDepth), isProtocolError(/IHDR/))
+    })
+
+    test('the size the caller expects is checked before anything is inflated', () => {
+      assert.throws(() => decodePng(good, { width: 4, height: 5 }), isProtocolError(/a 4×4 PNG for a 4×5 rect/))
+      assert.equal(decodePng(good, { width: 4, height: 4 }).rgba.length, 64)
+    })
+
+    test('image data that inflates past the size in IHDR stops there', async () => {
+      // 256 MiB of zeros (valid rows: filter type 0, black) in about 260 KB, for a 4×4 image.
+      const bomb = await zlibBomb(256, { end: true })
+      const png = Buffer.concat([
+        PNG_SIGNATURE,
+        good.subarray(8, 33),
+        pngChunk('IDAT', bomb),
+        pngChunk('IEND', Buffer.alloc(0)),
+      ])
+      const before = process.resourceUsage().maxRSS
+      assert.throws(() => decodePng(png), isProtocolError(/inflates to more than the 52 bytes of a 4×4 image/))
+      const grew = (process.resourceUsage().maxRSS - before) / 1024
+      assert.ok(grew < 64, `peak RSS grew by ${grew.toFixed(0)} MiB`)
     })
 
     test('corrupt zlib data', () => {

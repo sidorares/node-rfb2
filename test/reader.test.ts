@@ -71,6 +71,25 @@ describe('ByteReader', () => {
     assert.deepEqual([...(r.readNow(4) as Buffer)], [2, 3, 4, 5])
   })
 
+  test('skip drops bytes as they arrive, without collecting them', async () => {
+    const r = new ByteReader()
+    r.push(Buffer.from([1, 2, 3]))
+    const skipping = r.skip(10)
+    for (const chunk of [[4, 5], [6]]) {
+      r.push(Buffer.from(chunk))
+      await Promise.resolve()
+      assert.equal(r.available, 0, 'each chunk is dropped as it arrives')
+    }
+    r.push(Buffer.from([7, 8, 9, 10, 11, 12]))
+    await skipping
+    assert.deepEqual([...(await r.read(2))], [11, 12])
+    const err = new RfbError('CONNECTION_CLOSED', 'closed')
+    const cut = r.skip(5)
+    r.push(Buffer.from([1, 2]))
+    r.destroy(err)
+    await assert.rejects(cut, err)
+  })
+
   test('lengthPrefixedString refuses absurd lengths', async () => {
     const r = new ByteReader()
     r.push(Buffer.from([0x7f, 0xff, 0xff, 0xff]))

@@ -3,9 +3,13 @@
 // `Decoder.decode` runs, and the decoded pixels must be the image again.
 
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { describe, test } from 'node:test'
+import jpeg from 'jpeg-js'
 import { encodings as E } from '../src/constants.ts'
 import { Decoder } from '../src/decoder.ts'
+import { jpegSize } from '../src/encodings/tight.ts'
+import { zrleMaxLength } from '../src/encodings/trle.ts'
 import { RfbError } from '../src/errors.ts'
 import { type Color, type PixelFormat, pixelFormats } from '../src/pixel-format.ts'
 import { ByteReader } from '../src/reader.ts'
@@ -13,6 +17,7 @@ import type { Rect, RectHeader } from '../src/rect.ts'
 import {
   ByteWriter,
   compactLength,
+  cpixelLayout,
   Deflater,
   encodeCursorWithAlpha,
   encodeHextile,
@@ -25,6 +30,8 @@ import {
   encodeXCursor,
   encodeZlib,
   encodeZrle,
+  FAKE_JPEG_HEADER,
+  fakeJpeg,
   type HextileStats,
   hextileStats,
   type Image,
@@ -46,8 +53,9 @@ import {
   testImage,
   tightStats,
   tileStats,
+  zlibBomb,
 } from './helpers/encoders.ts'
-import { encodePng } from './helpers/png-encoder.ts'
+import { encodePng, PNG_SIGNATURE, pngChunk } from './helpers/png-encoder.ts'
 
 // ---------------------------------------------------------------------------------------------
 // Pixel formats and images
@@ -365,7 +373,7 @@ describe('pixel encodings round trip', () => {
           const expected: Image[] = []
           const r = rng(seed + 7)
           const decodeJpeg = (jpeg: Buffer, w: number, h: number) => {
-            assert.equal(jpeg.length, 9)
+            assert.deepEqual(jpeg, fakeJpeg(w, h, Buffer.from('fake jpeg')))
             return Buffer.from(Array.from({ length: w * h * 3 }, (_, i) => (i * 7 + w) & 0xff))
           }
           for (const [w, h] of SIZES) {
@@ -392,8 +400,9 @@ describe('pixel encodings round trip', () => {
             const fill = solidImage(pf, w, h, seed + w)
             items.push(item(E.tightPng, w, h, await enc.encode(fill, pf, { method: 'fill' })))
             expected.push(fill)
-            items.push(item(E.tightPng, w, h, enc.jpeg(Buffer.from('fake jpeg'))))
-            expected.push(asImage(modelPixels(pf, decodeJpeg(Buffer.alloc(9), w, h), 3, w * h)))
+            const jpeg = fakeJpeg(w, h, Buffer.from('fake jpeg'))
+            items.push(item(E.tightPng, w, h, enc.jpeg(jpeg)))
+            expected.push(asImage(modelPixels(pf, decodeJpeg(jpeg, w, h), 3, w * h)))
           }
           const copy = noiseImage(pf, 8, 8, seed + 3)
           items.push(item(E.tightPng, copy.width, copy.height, await enc.encode(copy, pf, { method: 'copy' })))
@@ -465,7 +474,7 @@ describe('decoder state across rects', () => {
     await add(solidImage(pf, 40, 20, 6), { method: 'fill', reset: 0b0001 })
     await add(img(7), { method: 'gradient', stream: 0 })
     await add(img(8), { method: 'copy', stream: 2 })
-    items.push(item(E.tight, 40, 20, enc.jpeg(Buffer.from([1, 2, 3]), 0b0100)))
+    items.push(item(E.tight, 40, 20, enc.jpeg(fakeJpeg(40, 20, Buffer.from([1, 2, 3])), 0b0100)))
     expected.push(null)
     await add(img(9), { method: 'copy', stream: 2 })
     await add(img(10), { method: 'copy', stream: 3 })
@@ -479,8 +488,11 @@ describe('decoder state across rects', () => {
     const rects = await decodeAll(new Decoder(), items, pf, 5)
     rects.forEach((rect, i) => {
       const e = expected[i]
-      if (e === null) assert.deepEqual(rect, { type: 'jpeg', ...items[i]?.header, jpeg: Buffer.from([1, 2, 3]) })
-      else assertPixels(pixelsOf(rect), (e as Image).data, 40, 2, `rect ${i}`)
+      if (e === null) {
+        assert.deepEqual(rect, { type: 'jpeg', ...items[i]?.header, jpeg: fakeJpeg(40, 20, Buffer.from([1, 2, 3])) })
+      } else {
+        assertPixels(pixelsOf(rect), (e as Image).data, 40, 2, `rect ${i}`)
+      }
     })
   })
 
@@ -567,8 +579,9 @@ describe('Tight JPEG', () => {
   test('without decodeJpeg: the JPEG data, with 1-, 2- and 3-byte compact lengths', async () => {
     const enc = new TightEncoder()
     const r = rng(3)
-    const jpegs = [5, 127, 128, 300, 16383, 16384, 20000].map((n) =>
-      Buffer.from(Array.from({ length: n }, () => randInt(r, 256))),
+    // 1-, 2- and 3-byte lengths: up to 127, up to 16383, more.
+    const jpegs = [FAKE_JPEG_HEADER, 127, 128, 300, 16383, 16384, 20000].map((n) =>
+      fakeJpeg(64, 48, Buffer.from(Array.from({ length: n - FAKE_JPEG_HEADER }, () => randInt(r, 256)))),
     )
     const items = jpegs.map((j, i) => item(i % 2 ? E.tightPng : E.tight, 64, 48, enc.jpeg(j)))
     assert.equal(enc.stats.len1, 2)
@@ -587,8 +600,9 @@ describe('Tight JPEG', () => {
       const calls: [string, number, number][] = []
       const outputs: Uint8Array[] = []
       const decodeJpeg = (jpeg: Buffer, w: number, h: number): Uint8Array | Promise<Uint8Array> => {
-        calls.push([jpeg.toString(), w, h])
-        const [kind] = jpeg.toString().split(':')
+        const text = jpeg.subarray(FAKE_JPEG_HEADER).toString()
+        calls.push([text, w, h])
+        const [kind] = text.split(':')
         const pixels = new Uint8Array(Array.from({ length: w * h * (kind === 'rgba' ? 4 : 3) }, () => randInt(r, 256)))
         outputs.push(pixels)
         return kind === 'async' ? Promise.resolve(pixels) : pixels
@@ -600,7 +614,9 @@ describe('Tight JPEG', () => {
         [70, 33, 'async'],
         [16, 16, 'rgb'],
       ]
-      const items = sizes.map(([w, h, kind], i) => item(E.tight, w, h, enc.jpeg(Buffer.from(`${kind}:${i}`), i & 1)))
+      const items = sizes.map(([w, h, kind], i) =>
+        item(E.tight, w, h, enc.jpeg(fakeJpeg(w, h, Buffer.from(`${kind}:${i}`)), i & 1)),
+      )
       const rects = await decodeAll(new Decoder({ decodeJpeg }), items, pf, 9)
       assert.deepEqual(
         calls,
@@ -616,7 +632,7 @@ describe('Tight JPEG', () => {
 
   test('decodeJpeg returning the wrong number of bytes', async () => {
     const decoder = new Decoder({ decodeJpeg: (_j, w, h) => new Uint8Array(w * h * 2) })
-    const items = [item(E.tight, 4, 4, new TightEncoder().jpeg(Buffer.from('x')))]
+    const items = [item(E.tight, 4, 4, new TightEncoder().jpeg(fakeJpeg(4, 4)))]
     await assert.rejects(decodeAll(decoder, items, bgrx, 1), isProtocolError(/RGB or RGBA/))
   })
 })
@@ -996,7 +1012,7 @@ describe('malformed rects reject with PROTOCOL_ERROR', () => {
         /can't carry/,
       )
     }
-    const jpeg = new TightEncoder().jpeg(Buffer.from('jpeg'))
+    const jpeg = new TightEncoder().jpeg(fakeJpeg(2, 2))
     await rejectsWith(E.pseudoCursorWithAlpha, 2, 2, encodeCursorWithAlpha(E.tight, jpeg), pf, /JPEG cursor/)
   })
 
@@ -1025,5 +1041,235 @@ describe('malformed rects reject with PROTOCOL_ERROR', () => {
       await assert.rejects(decoding, (err) => err === end)
     }
     d.close()
+  })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Bounded work: a few bytes from the wire can't make the decoder inflate, buffer or paint much
+// more than the rect holds.
+
+/** The message of the PROTOCOL_ERROR `p` rejects with, which must match `message`. */
+async function protocolErrorOf(p: Promise<unknown>, message: RegExp): Promise<string> {
+  let text = ''
+  await assert.rejects(p, (err: unknown) => {
+    isProtocolError(message)(err)
+    text = (err as Error).message
+    return true
+  })
+  return text
+}
+
+/** How much the process's peak RSS grew while `fn` ran, in MiB. */
+async function peakGrowth(fn: () => Promise<unknown>): Promise<number> {
+  const before = process.resourceUsage().maxRSS
+  await fn()
+  return (process.resourceUsage().maxRSS - before) / 1024
+}
+
+/** How far a bounded inflate got before it stopped, from its error message. */
+const inflated = (message: string) => Number(/at least (\d+) bytes/.exec(message)?.[1])
+
+const u32Bytes = (n: number) => new ByteWriter().u32(n).toBuffer()
+
+/** ZRLE tiles for `w`×`h`, each in the subencoding that takes the most bytes a valid tile can (`cp`-byte CPIXELs). */
+function worstZrleTiles(w: number, h: number, cp: number): Buffer {
+  const out = new ByteWriter()
+  for (let ty = 0; ty < h; ty += 64) {
+    for (let tx = 0; tx < w; tx += 64) {
+      const n = Math.min(64, w - tx) * Math.min(64, h - ty)
+      if (n * (cp + 1) >= 127 * cp + 2 * n) {
+        // Plain RLE, every run one pixel: a CPIXEL and a run length byte per pixel.
+        out.u8(128)
+        for (let i = 0; i < n; i++) {
+          for (let c = 0; c < cp; c++) out.u8(i + c)
+          out.u8(0)
+        }
+      } else {
+        // Palette RLE of 127 colours, every pixel a run of one with the run bit set: 2 bytes each.
+        out.u8(128 + 127)
+        for (let i = 0; i < 127 * cp; i++) out.u8(i)
+        for (let i = 0; i < n; i++) out.u8(0x80 | (i % 127)).u8(0)
+      }
+    }
+  }
+  return out.toBuffer()
+}
+
+describe('bounded decoding', () => {
+  test('Zlib, ZRLE and Tight: a zlib bomb stops inflating at what the rect holds', async () => {
+    // 256 MiB (128 MiB for Tight) of zeros in about 260 KB of zlib data: no more than a 256×256 rect
+    // can need, so only the inflating can stop it.
+    const bomb = await zlibBomb(256)
+    const tightBomb = await zlibBomb(128)
+    const cases = [
+      [E.zlib, bytes(u32Bytes(bomb.length), bomb), 256 * 256 * 4, /where 262144 were expected/],
+      [E.zrle, bytes(u32Bytes(bomb.length), bomb), zrleMaxLength(256, 256, 3), /where the rect holds at most 268256/],
+      [E.tight, bytes([0x00], compactLength(tightBomb.length), tightBomb), 256 * 256 * 3, /where 196608 were expected/],
+    ] as const
+    const grew = await peakGrowth(async () => {
+      for (const [encoding, data, bound, message] of cases) {
+        const text = await protocolErrorOf(decodeAll(new Decoder(), [item(encoding, 256, 256, data)], bgrx, 1), message)
+        assert.ok(inflated(text) <= bound + 64 * 1024, `encoding ${encoding}: ${text}`)
+      }
+    })
+    assert.ok(grew < 128, `peak RSS grew by ${grew.toFixed(0)} MiB`)
+  })
+
+  test('Zlib, ZRLE and Tight: a zlib length longer than the rect can need fails before the data is read', async () => {
+    const huge = u32Bytes(0x7fffffff)
+    await rejectsWith(E.zlib, 4, 4, huge, bgrx, /Zlib: 2147483647 bytes of zlib data for at most 64 bytes/)
+    await rejectsWith(E.zrle, 4, 4, huge, bgrx, /ZRLE: 2147483647 bytes of zlib data for at most 446 bytes/)
+    const tight = bytes([0x00], compactLength((1 << 22) - 1))
+    await rejectsWith(E.tight, 4, 4, tight, bgrx, /Tight: 4194303 bytes of zlib data for at most 48 bytes/)
+  })
+
+  test('ZRLE: the most tile data a valid rect can have is accepted, a byte more is not', async () => {
+    for (const { name, pf } of FORMATS.filter((f) => ['bgrx', 'rgb565', 'bgr233', 'depth 32'].includes(f.name))) {
+      const cp = cpixelLayout(pf).size
+      for (const [w, h] of [
+        [1, 1],
+        [5, 3],
+        [64, 64],
+        [130, 129],
+      ] as const) {
+        const label = `${name} ${w}×${h}`
+        const tiles = worstZrleTiles(w, h, cp)
+        const max = zrleMaxLength(w, h, cp)
+        assert.ok(tiles.length <= max, `${label}: ${tiles.length} bytes of tiles, bound ${max}`)
+        // The decoder ignores what follows the last tile, so padding probes the bound exactly.
+        const full = Buffer.concat([tiles, Buffer.alloc(max - tiles.length)])
+        const [rect] = await decodeAll(new Decoder(), [item(E.zrle, w, h, await zrleRect(full))], pf, w + h)
+        assert.equal(pixelsOf(rect).length, w * h * (pf.bitsPerPixel / 8), label)
+        const over = await zrleRect(Buffer.concat([full, Buffer.alloc(1)]))
+        await rejectsWith(
+          E.zrle,
+          w,
+          h,
+          over,
+          pf,
+          new RegExp(`at least ${max + 1} bytes where the rect holds at most ${max}$`),
+        )
+      }
+    }
+  })
+
+  test('valid full-screen rects stay within the bounds: 1920×1080 ZRLE and Zlib, stored without compression', async () => {
+    const [w, h] = [1920, 1080]
+    // Level 0 (stored blocks) makes the zlib data longer than what it inflates to: the worst case.
+    const zrleStream = new Deflater(0)
+    const zlibStream = new Deflater(0)
+    const tiles = worstZrleTiles(w, h, 3)
+    const zrle = await zrleStream.compress(tiles)
+    assert.ok(zrle.length > tiles.length)
+    const pixels = randomBytes(w * h * 4)
+    const zlibData = await zlibStream.compress(pixels)
+    zrleStream.close()
+    zlibStream.close()
+    const rects = await decodeAll(
+      new Decoder(),
+      [
+        item(E.zrle, w, h, bytes(u32Bytes(zrle.length), zrle)),
+        item(E.zlib, w, h, bytes(u32Bytes(zlibData.length), zlibData)),
+      ],
+      bgrx,
+      3,
+    )
+    assert.equal(pixelsOf(rects[0]).length, w * h * 4)
+    assert.ok(pixelsOf(rects[1]).equals(pixels))
+  })
+
+  test('TightPNG: a PNG whose image data inflates past its size stops there', async () => {
+    const ihdr = Buffer.concat([u32Bytes(64), u32Bytes(64), Buffer.from([8, 2, 0, 0, 0])])
+    const idat = await zlibBomb(256, { end: true })
+    const png = Buffer.concat([
+      PNG_SIGNATURE,
+      pngChunk('IHDR', ihdr),
+      pngChunk('IDAT', idat),
+      pngChunk('IEND', Buffer.alloc(0)),
+    ])
+    const data = bytes([0xa0], compactLength(png.length), png)
+    const grew = await peakGrowth(() =>
+      protocolErrorOf(
+        decodeAll(new Decoder(), [item(E.tightPng, 64, 64, data)], bgrx, 1),
+        /more than the 12352 bytes of a 64×64 image/,
+      ),
+    )
+    assert.ok(grew < 128, `peak RSS grew by ${grew.toFixed(0)} MiB`)
+  })
+
+  test('Tight JPEG: the JPEG must be the size of its rect before anything decodes it', async () => {
+    let calls = 0
+    const decodeJpeg = (_jpeg: Buffer, w: number, h: number) => {
+      calls++
+      return new Uint8Array(w * h * 3)
+    }
+    const enc = new TightEncoder()
+    for (const decoder of [() => new Decoder(), () => new Decoder({ decodeJpeg })]) {
+      for (const encoding of [E.tight, E.tightPng]) {
+        // A JPEG decoder would allocate for 40000×40000 pixels.
+        const big = item(encoding, 4, 4, enc.jpeg(fakeJpeg(40000, 40000)))
+        await assert.rejects(decodeAll(decoder(), [big], bgrx, 1), isProtocolError(/a 40000×40000 JPEG for a 4×4 rect/))
+        const none = item(encoding, 4, 4, enc.jpeg(Buffer.from('not a jpeg')))
+        await assert.rejects(decodeAll(decoder(), [none], bgrx, 1), isProtocolError(/JPEG data without a frame header/))
+      }
+    }
+    assert.equal(calls, 0)
+  })
+
+  test('jpegSize reads the frame header of real JPEGs', () => {
+    const real = Buffer.from(jpeg.encode({ data: Buffer.alloc(33 * 17 * 4, 0x80), width: 33, height: 17 }, 50).data)
+    assert.deepEqual(jpegSize(real), { width: 33, height: 17 })
+    // A fill byte and an APP1 segment before the rest.
+    const tweaked = Buffer.concat([real.subarray(0, 2), Buffer.from([0xff, 0xff, 0xe1, 0, 4, 1, 2]), real.subarray(2)])
+    assert.deepEqual(jpegSize(tweaked), { width: 33, height: 17 })
+    // Progressive (SOF2).
+    const progressive = fakeJpeg(7, 9)
+    progressive[3] = 0xc2
+    assert.deepEqual(jpegSize(progressive), { width: 7, height: 9 })
+    // The scan before a frame header, a truncated header, no SOI.
+    assert.equal(jpegSize(Buffer.from([0xff, 0xd8, 0xff, 0xda, 0, 2, 0xff, 0xc0])), null)
+    assert.equal(jpegSize(fakeJpeg(5, 5).subarray(0, 10)), null)
+    assert.equal(jpegSize(fakeJpeg(5, 5).subarray(2)), null)
+  })
+
+  test('TRLE and ZRLE: a run length made of many 255s fails at once', async () => {
+    // Plain RLE in a 16×16 tile: one CPIXEL, then 100,000 bytes of 255. Waiting for the end of the
+    // run length (and parsing the tile again with every chunk) would take as long as the server likes.
+    const long = bytes([128, 7], Buffer.alloc(100_000, 255))
+    await rejectsWith(E.trle, 16, 16, long, bgr233, /a run goes past the end of the tile/)
+    // ZRLE inflates no more than 640 bytes for a 16×16 rect; a run length within that fails the same way.
+    await rejectsWith(E.zrle, 16, 16, await zrleRect(long), bgr233, /where the rect holds at most 640/)
+    await rejectsWith(E.zrle, 16, 16, await zrleRect(long.subarray(0, 600)), bgr233, /a run goes past the end/)
+    // Palette RLE the same way.
+    const palette = bytes([130, 1, 2, 0x81], Buffer.alloc(100_000, 255))
+    await rejectsWith(E.trle, 16, 16, palette, bgr233, /a run goes past the end of the tile/)
+  })
+
+  test('RRE and CoRRE: the subrects may paint the rect four times over, not more', async () => {
+    for (const [encoding, compact] of [
+      [E.rre, false],
+      [E.coRre, true],
+    ] as const) {
+      const subrect = (x: number) => (compact ? [9, x, 0, 10, 10] : [9, 0, x, 0, 0, 0, 10, 0, 10])
+      const rect = (subrects: number[][]) => bytes(u32Bytes(subrects.length), [1], ...subrects)
+      const whole = new Array(4).fill(subrect(0))
+      const [ok] = await decodeAll(new Decoder(), [item(encoding, 10, 10, rect(whole))], bgr233, 1)
+      assert.deepEqual(pixelsOf(ok), Buffer.alloc(100, 9))
+      await rejectsWith(
+        encoding,
+        10,
+        10,
+        rect([...whole, subrect(9)]),
+        bgr233,
+        /paint more than 4 times the 10×10 rect/,
+      )
+      // Subrects outside the rect paint nothing, and cost nothing.
+      await decodeAll(
+        new Decoder(),
+        [item(encoding, 10, 10, rect([...whole, ...new Array(90).fill(subrect(200))]))],
+        bgr233,
+        1,
+      )
+    }
   })
 })

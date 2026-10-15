@@ -106,8 +106,16 @@ export class ByteReader {
     return (await this.read(4)).readInt32BE(0)
   }
 
+  /** Drops the next `n` bytes as they arrive, without collecting them first. */
   async skip(n: number): Promise<void> {
-    await this.read(n)
+    let left = n
+    for (;;) {
+      const k = Math.min(left, this.#length)
+      this.#drop(k)
+      left -= k
+      if (left === 0) return
+      await this.waitFor(1)
+    }
   }
 
   /** A string of `n` bytes. */
@@ -120,6 +128,21 @@ export class ByteReader {
     const n = await this.u32()
     if (n > max) throw protocolError(`string of ${n} bytes is longer than the ${max} this client accepts`)
     return this.string(n, encoding)
+  }
+
+  #drop(n: number): void {
+    this.#length -= n
+    while (n > 0) {
+      const chunk = this.#chunks[0] as Buffer
+      const k = Math.min(chunk.length - this.#offset, n)
+      n -= k
+      if (this.#offset + k === chunk.length) {
+        this.#chunks.shift()
+        this.#offset = 0
+      } else {
+        this.#offset += k
+      }
+    }
   }
 
   #take(n: number): Buffer {

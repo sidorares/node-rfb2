@@ -1,5 +1,5 @@
 import { protocolError, RfbError } from '../errors.ts'
-import type { Inflator } from '../inflator.ts'
+import { checkZlibLength, type Inflator } from '../inflator.ts'
 import { bytesPerPixel, isTightRgb, type PixelFormat, readPixel, rgbToPixels, writePixel } from '../pixel-format.ts'
 import { decodePng } from '../png.ts'
 import type { ByteReader } from '../reader.ts'
@@ -55,6 +55,13 @@ export async function decodeTight(
 
   if (comp === JPEG) {
     const jpeg = await reader.read(await compactLength(reader))
+    // A JPEG decoder allocates for the size in the JPEG's header, which a few hundred bytes can set
+    // to gigapixels: only a JPEG of the rect's own size goes on.
+    const size = jpegSize(jpeg)
+    if (size === null) throw protocolError(`${name}: JPEG data without a frame header`)
+    if (size.width !== w || size.height !== h) {
+      throw protocolError(`${name}: a ${size.width}×${size.height} JPEG for a ${w}×${h} rect`)
+    }
     if (!decodeJpeg) return { jpeg }
     return { data: fromRgb(pf, await decodeJpeg(jpeg, w, h), w, h, 'JPEG') }
   }
@@ -63,10 +70,7 @@ export async function decodeTight(
   // compression stay valid: QEMU sends basic compression for an 8-bit client, which
   // cannot carry a PNG. 0xA means "no zlib" only for plain Tight.
   if (png && comp === PNG_OR_NO_ZLIB) {
-    const image = decodePng(await reader.read(await compactLength(reader)))
-    if (image.width !== w || image.height !== h) {
-      throw protocolError(`TightPNG: a ${image.width}×${image.height} PNG for a ${w}×${h} rect`)
-    }
+    const image = decodePng(await reader.read(await compactLength(reader)), { width: w, height: h })
     return { data: fromRgb(pf, image.rgba, w, h, 'PNG') }
   }
 
@@ -86,8 +90,9 @@ export async function decodeTight(
 
   const readData = async (size: number): Promise<Buffer> => {
     if (!compressed || size < MIN_TO_COMPRESS) return reader.read(size)
-    const zlibData = await reader.read(await compactLength(reader))
-    return stream.inflate(zlibData, size)
+    const length = await compactLength(reader)
+    checkZlibLength(length, size, name)
+    return stream.inflate(await reader.read(length), size)
   }
 
   switch (filter) {
@@ -140,6 +145,35 @@ async function compactLength(reader: ByteReader): Promise<number> {
     if (b & 0x80) length |= (await reader.u8()) << 14
   }
   return length
+}
+
+/**
+ * The image size in a JPEG's frame header (SOFn), or null when the markers before the image data
+ * hold none.
+ */
+export function jpegSize(jpeg: Buffer): { width: number; height: number } | null {
+  if (jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return null
+  let pos = 2
+  while (pos + 4 <= jpeg.length) {
+    if (jpeg[pos] !== 0xff) return null
+    const marker = jpeg[pos + 1] as number
+    if (marker === 0xff) {
+      pos++ // a fill byte
+      continue
+    }
+    if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd8)) {
+      pos += 2 // TEM, RSTn, SOI: no length
+      continue
+    }
+    // SOF0 to SOF15, except DHT (C4), JPG (C8) and DAC (CC): length, precision, height, width.
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      if (pos + 9 > jpeg.length) return null
+      return { width: jpeg.readUInt16BE(pos + 7), height: jpeg.readUInt16BE(pos + 5) }
+    }
+    if (marker === 0xda || marker === 0xd9) return null // the scan (or the end) before a frame header
+    pos += 2 + jpeg.readUInt16BE(pos + 2)
+  }
+  return null
 }
 
 /** `count` TPIXELs as pixels: R, G, B triplets when `rgb`, else already pixels. */

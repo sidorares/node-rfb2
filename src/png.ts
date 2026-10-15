@@ -1,3 +1,4 @@
+import buffer from 'node:buffer'
 import zlib from 'node:zlib'
 import { protocolError } from './errors.ts'
 
@@ -12,7 +13,21 @@ export interface PngImage {
   rgba: Buffer
 }
 
-export function decodePng(png: Buffer): PngImage {
+/** The bit depths each colour type allows. */
+const DEPTHS: Record<number, readonly number[]> = {
+  0: [1, 2, 4, 8, 16],
+  2: [8, 16],
+  3: [1, 2, 4, 8],
+  4: [8, 16],
+  6: [8, 16],
+}
+
+/**
+ * Decodes a PNG. With `expected`, the image must have that size, which is checked before anything is
+ * inflated. The image data inflates to at most the bytes an image of the size in IHDR holds, so a
+ * small PNG can't decompress to more.
+ */
+export function decodePng(png: Buffer, expected?: { width: number; height: number }): PngImage {
   if (png.length < 8 || !png.subarray(0, 8).equals(SIGNATURE)) throw protocolError('PNG: bad signature')
   let width = 0
   let height = 0
@@ -28,6 +43,7 @@ export function decodePng(png: Buffer): PngImage {
     if (data.length !== length) throw protocolError(`PNG: truncated ${type} chunk`)
     pos += 12 + length
     if (type === 'IHDR') {
+      if (length < 13) throw protocolError('PNG: missing or invalid IHDR')
       width = data.readUInt32BE(0)
       height = data.readUInt32BE(4)
       depth = data[8] as number
@@ -44,19 +60,30 @@ export function decodePng(png: Buffer): PngImage {
     }
   }
   const channels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 }[colorType]
-  if (channels === undefined || width === 0 || height === 0) throw protocolError('PNG: missing or invalid IHDR')
+  if (channels === undefined || width === 0 || height === 0 || !DEPTHS[colorType]?.includes(depth)) {
+    throw protocolError('PNG: missing or invalid IHDR')
+  }
+  if (expected && (width !== expected.width || height !== expected.height)) {
+    throw protocolError(`PNG: a ${width}×${height} PNG for a ${expected.width}×${expected.height} rect`)
+  }
   if (colorType === 3 && palette === null) throw protocolError('PNG: palette image without PLTE')
 
   const bitsPerPixel = channels * depth
-  const rowBytes = (width * bitsPerPixel + 7) >> 3
+  const rowBytes = Math.ceil((width * bitsPerPixel) / 8)
   const filterStride = Math.max(1, bitsPerPixel >> 3)
+  // A filter byte and the pixels of each row.
+  const size = (rowBytes + 1) * height
+  if (size > buffer.constants.MAX_LENGTH) throw protocolError(`PNG: a ${width}×${height} image is too large`)
   let raw: Buffer
   try {
-    raw = zlib.inflateSync(Buffer.concat(idat))
+    raw = zlib.inflateSync(Buffer.concat(idat), { maxOutputLength: size })
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') {
+      throw protocolError(`PNG: the image data inflates to more than the ${size} bytes of a ${width}×${height} image`)
+    }
     throw protocolError(`PNG: corrupt image data (${(err as Error).message})`)
   }
-  if (raw.length < (rowBytes + 1) * height) throw protocolError('PNG: image data too short')
+  if (raw.length < size) throw protocolError('PNG: image data too short')
 
   // Undo the per-row filters in place, into `rows` (no filter bytes).
   const rows = Buffer.alloc(rowBytes * height)

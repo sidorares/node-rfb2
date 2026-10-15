@@ -1,5 +1,5 @@
 import { protocolError } from '../errors.ts'
-import type { Inflator } from '../inflator.ts'
+import { checkZlibLength, type Inflator } from '../inflator.ts'
 import { bytesPerPixel, cpixelOffset, type PixelFormat } from '../pixel-format.ts'
 import type { ByteReader } from '../reader.ts'
 import { PixelBuffer } from './util.ts'
@@ -32,6 +32,28 @@ function tileFormat(pf: PixelFormat, trle: boolean): TileFormat {
   return { bpp, cp: cpOffset < 0 ? bpp : 3, cpOffset: Math.max(0, cpOffset), trle }
 }
 
+/**
+ * The most tile data a valid ZRLE rect of `w`×`h` pixels with `cp`-byte CPIXELs can inflate to.
+ *
+ * A tile of n = tw×th pixels (n ≤ 64×64) is a subencoding byte and then at most:
+ * - raw: n·cp
+ * - solid: cp
+ * - packed palette (2 to 16 colours): 16·cp + th·⌈tw/2⌉ ≤ 16·cp + n (4-bit indices, rows padded to bytes)
+ * - plain RLE: a CPIXEL and a run length of ⌊(len − 1) / 255⌋ + 1 bytes per run. Runs of one pixel
+ *   cost the most per pixel: n·(cp + 1)
+ * - palette RLE (2 to 127 colours): 127·cp, then at most 2 bytes per pixel (an index with the run bit
+ *   and a one-byte length, for a run of one): 127·cp + 2·n
+ * Every case is at most n·(cp + 1) + 127·cp (as cp ≥ 1, 2·n ≤ n·(cp + 1)). Summed over the tiles,
+ * whose n add up to w·h: w·h·(cp + 1) + tiles·(1 + 127·cp), tiles = ⌈w/64⌉·⌈h/64⌉.
+ *
+ * For a full 7680×4320 (8K) screen with 3-byte CPIXELs that is 135.8 MB, 2% more than the 132.7 MB of
+ * pixels it decodes to. Valid tile data never exceeds it; zlib data that inflates to more is cut off.
+ */
+export function zrleMaxLength(w: number, h: number, cp: number): number {
+  const tiles = Math.ceil(w / 64) * Math.ceil(h / 64)
+  return w * h * (cp + 1) + tiles * (1 + 127 * cp)
+}
+
 /** ZRLE: a U32 length, then that much of the connection's zlib stream, which inflates to 64×64 tiles. */
 export async function decodeZrle(
   reader: ByteReader,
@@ -40,10 +62,12 @@ export async function decodeZrle(
   h: number,
   pf: PixelFormat,
 ): Promise<Buffer> {
-  const length = await reader.u32()
-  const compressed = await reader.read(length)
-  const data = length > 0 ? await inflator.inflate(compressed) : compressed
   const f = tileFormat(pf, false)
+  const max = zrleMaxLength(w, h, f.cp)
+  const length = await reader.u32()
+  checkZlibLength(length, max, 'ZRLE')
+  const compressed = await reader.read(length)
+  const data = length > 0 ? await inflator.inflate(compressed, max, false) : compressed
   const state: TileState = { palette: new Uint32Array(128), paletteSize: 0 }
   const out = new PixelBuffer(w, h, f.bpp)
   let pos = 0
@@ -128,12 +152,16 @@ function decodeTile(
     }
   }
 
-  const runLength = () => {
+  // A run length: 1 plus every byte up to the first that isn't 255. A run can't be longer than the
+  // `left` pixels of the tile, so a long string of 255s fails at once rather than being scanned to
+  // its end (and for TRLE scanned again from the tile's start each time more data arrives).
+  const runLength = (left: number) => {
     let len = 1
     for (;;) {
       if (pos >= end) throw NEED_MORE
       const b = src[pos++] as number
       len += b
+      if (len > left) throw protocolError('ZRLE/TRLE: a run goes past the end of the tile')
       if (b !== 255) return len
     }
   }
@@ -188,7 +216,7 @@ function decodeTile(
       if (pos + cp > end) throw NEED_MORE
       const word = cpixel(pos)
       pos += cp
-      const len = runLength()
+      const len = runLength(total - i)
       run(i, len, word)
       i += len
     }
@@ -209,7 +237,7 @@ function decodeTile(
     let len = 1
     if (index & 0x80) {
       index &= 0x7f
-      len = runLength()
+      len = runLength(total - i)
     }
     if (index >= paletteSize) throw protocolError('ZRLE/TRLE: palette index out of range')
     if (len === 1 && i < total) {

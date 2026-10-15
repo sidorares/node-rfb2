@@ -6,6 +6,7 @@
 // bytes, and only look inside a pixel where the wire format does (ZRLE/TRLE CPIXELs, Tight TPIXELs
 // and the gradient filter).
 
+import { once } from 'node:events'
 import zlib from 'node:zlib'
 import type { PixelFormat } from '../../src/pixel-format.ts'
 
@@ -327,6 +328,34 @@ export class Deflater {
 
   close(): void {
     this.#z.close()
+  }
+}
+
+/**
+ * zlib data that inflates to `mib` MiB of `fill` bytes (about 1 KB per MiB), after `head`: the first
+ * sync-flushed part of a stream, or with `end` a whole stream. Nothing that size is ever held.
+ */
+export async function zlibBomb(mib: number, options: { fill?: number; head?: Buffer; end?: boolean } = {}) {
+  const z = zlib.createDeflate()
+  const parts: Buffer[] = []
+  z.on('data', (chunk: Buffer) => parts.push(chunk))
+  if (options.head) z.write(options.head)
+  const chunk = Buffer.alloc(1 << 20, options.fill ?? 0)
+  for (let i = 0; i < mib; i++) z.write(chunk)
+  if (options.end) {
+    z.end()
+    await once(z, 'end')
+    return Buffer.concat(parts)
+  }
+  await new Promise<void>((resolve) => z.flush(zlib.constants.Z_SYNC_FLUSH, () => resolve()))
+  // A sync flush ends with an empty stored block, 00 00 FF FF; wait until all of it has arrived.
+  for (;;) {
+    const out = Buffer.concat(parts)
+    if (out.length >= 4 && out.readUInt32BE(out.length - 4) === 0x0000ffff) {
+      z.close()
+      return out
+    }
+    await new Promise((resolve) => setImmediate(resolve))
   }
 }
 
@@ -767,6 +796,18 @@ export function tightRgb(pf: PixelFormat): boolean {
   )
 }
 
+/** Bytes in `fakeJpeg`'s header: SOI, then a SOF0 segment with one component. */
+export const FAKE_JPEG_HEADER = 15
+
+/**
+ * Stand-in JPEG data for a `width`×`height` rect: a real start (SOI and a baseline frame header with
+ * the size), then `rest`. Decoders check only the header; tests decode the rest themselves.
+ */
+export function fakeJpeg(width: number, height: number, rest: Uint8Array = Buffer.alloc(0)): Buffer {
+  const header = new ByteWriter().u16(0xffd8).u16(0xffc0).u16(11).u8(8).u16(height).u16(width)
+  return header.u8(1).u8(1).u8(0x11).u8(0).bytes(rest).toBuffer()
+}
+
 /** Tight's compact length: 7 bits per byte, least significant first, at most 3 bytes. */
 export function compactLength(n: number): Buffer {
   if (n < 0 || n >= 1 << 22) throw new Error(`compact length ${n} out of range`)
@@ -922,7 +963,7 @@ export class TightEncoder {
     return out.toBuffer()
   }
 
-  /** A JpegCompression rect carrying `jpeg` (any bytes: the decoder passes them through). */
+  /** A JpegCompression rect carrying `jpeg` (the decoder reads only its frame header; see `fakeJpeg`). */
   jpeg(jpeg: Uint8Array, reset = 0): Buffer {
     this.#reset(reset)
     const out = new ByteWriter().u8(0x90 | reset)
