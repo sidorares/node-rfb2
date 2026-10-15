@@ -20,6 +20,7 @@ import {
   acceptNone,
   connected,
   next,
+  type Peer,
   pair,
   readSetup,
   rectHeader,
@@ -586,6 +587,183 @@ describe('updates', () => {
       () => client.pointerEvent(-1, 0),
       (err: RfbError) => err.code === 'INVALID_ARGUMENT',
     )
+    client.destroy()
+  })
+})
+
+describe('Extended Clipboard state', () => {
+  const CLIP = {
+    text: 1,
+    dib: 1 << 3,
+    caps: 1 << 24,
+    request: 1 << 25,
+    peek: 1 << 26,
+    notify: 1 << 27,
+    provide: 1 << 28,
+  }
+  const ALL = CLIP.text | CLIP.request | CLIP.peek | CLIP.notify | CLIP.provide
+
+  /** A ServerCutText in the Extended Clipboard format (negative length). */
+  const ext = (flags: number, data: Buffer = Buffer.alloc(0)) =>
+    Buffer.concat([u8(3, 0, 0, 0), s32(-(4 + data.length)), u32(flags), data])
+  /** A provide: size and data for each format, zlib-compressed. */
+  const provide = (formats: number, ...values: Buffer[]) =>
+    ext(CLIP.provide | formats, zlib.deflateSync(Buffer.concat(values.flatMap((v) => [u32(v.length), v]))))
+  const text = (s: string) => Buffer.from(`${s}\0`)
+
+  /** The client's next Extended Clipboard message. */
+  async function readExt(peer: Peer): Promise<{ flags: number; data: Buffer }> {
+    const head = await peer.read(8)
+    assert.equal(head[0], 6, 'ClientCutText')
+    assert.ok(head.readInt32BE(4) < 0, 'in the Extended Clipboard format')
+    const body = await peer.read(-head.readInt32BE(4))
+    return { flags: body.readUInt32BE(0), data: body.subarray(4) }
+  }
+
+  /** A client that got TigerVNC's caps (text, every action, 0 bytes unasked) and answered them. */
+  async function withCaps() {
+    const { client, peer } = await connected()
+    peer.write(ext(CLIP.caps | ALL, u32(0)))
+    assert.ok((await readExt(peer)).flags & CLIP.caps)
+    const events: (string | null)[] = []
+    client.on('clipboard', (t) => events.push(t))
+    client.on('clipboardEmpty', () => events.push(null))
+    /** Resolves once the client has handled what the server sent so far (a Bell behind it). */
+    const sync = async () => {
+      const bell = next(client, 'bell')
+      peer.write(u8(2))
+      await bell
+    }
+    return { client, peer, events, sync }
+  }
+
+  test('a notify or provide without text is clipboardEmpty (#36)', async () => {
+    const { client, peer, events, sync } = await withCaps()
+    peer.write(ext(CLIP.notify)) // emptied, or an image was copied
+    peer.write(ext(CLIP.provide, zlib.deflateSync(Buffer.alloc(0)))) // no formats at all
+    peer.write(provide(CLIP.dib, Buffer.from('BM'))) // an image only
+    await sync()
+    assert.deepEqual(events, [null, null, null])
+    assert.equal(peer.reader.available, 0, 'no request without text')
+    client.destroy()
+  })
+
+  test("TigerVNC's notify without text after the client's own change is no change", async () => {
+    const { client, peer, events, sync } = await withCaps()
+    peer.write(provide(CLIP.text, text('server text'))) // an X client copied text
+    await sync()
+    client.updateClipboard('client text')
+    assert.equal((await readExt(peer)).flags, (CLIP.notify | CLIP.text) >>> 0)
+    // Xvnc takes the selection: it asks the owner for the text to cache it, then tells every client
+    // that its own text is gone.
+    peer.write(ext(CLIP.request | CLIP.text), ext(CLIP.notify))
+    assert.equal((await readExt(peer)).flags, (CLIP.provide | CLIP.text) >>> 0)
+    await sync()
+    assert.deepEqual(events, ['server text'])
+    // The client still holds the clipboard.
+    peer.write(ext(CLIP.request | CLIP.text))
+    const answer = await readExt(peer)
+    assert.equal(answer.flags, (CLIP.provide | CLIP.text) >>> 0)
+    assert.equal(zlib.inflateSync(answer.data).subarray(4).toString(), 'client text\0')
+    // Another change replaces nothing of the server's, so a notify without text after it is a change.
+    client.updateClipboard('again')
+    await readExt(peer)
+    peer.write(ext(CLIP.notify))
+    await sync()
+    assert.deepEqual(events, ['server text', null])
+    client.destroy()
+  })
+
+  test('right after connecting the server may hold text it never announced, so its notify is expected', async () => {
+    const { client, peer, events, sync } = await withCaps()
+    client.updateClipboard('client text')
+    await readExt(peer)
+    peer.write(ext(CLIP.notify))
+    await sync()
+    assert.deepEqual(events, [])
+    client.destroy()
+  })
+
+  test('a notify without text is a change when the server had no text, or reported newer text', async () => {
+    const { client, peer, events, sync } = await withCaps()
+    peer.write(ext(CLIP.notify)) // the server's clipboard holds no text
+    await sync()
+    client.updateClipboard('one')
+    await readExt(peer)
+    peer.write(ext(CLIP.notify))
+    await sync()
+    assert.deepEqual(events, [null, null])
+
+    peer.write(provide(CLIP.text, text('server text')))
+    await sync()
+    client.updateClipboard('two') // replaces the server's text: a notify is due...
+    await readExt(peer)
+    peer.write(provide(CLIP.text, text('newer'))) // ...but the server reports newer text first
+    peer.write(ext(CLIP.notify))
+    await sync()
+    assert.deepEqual(events, [null, null, 'server text', 'newer', null])
+    client.destroy()
+  })
+
+  for (const [name, change] of [
+    ['a notify with text', ext(CLIP.notify | CLIP.text)],
+    ['a provide', provide(CLIP.text, text('server text'))],
+    ['a provide without text', provide(CLIP.dib, Buffer.from('BM'))],
+    ['a plain ServerCutText', Buffer.concat([u8(3, 0, 0, 0), u32(6), Buffer.from('server')])],
+  ] as const) {
+    test(`after ${name} the client no longer holds the clipboard (#37)`, async () => {
+      const { client, peer, sync } = await withCaps()
+      client.updateClipboard('client text')
+      await readExt(peer)
+      peer.write(ext(CLIP.peek))
+      assert.equal((await readExt(peer)).flags, (CLIP.notify | CLIP.text) >>> 0, 'holds text before')
+
+      peer.write(change)
+      if (name === 'a notify with text') {
+        assert.equal((await readExt(peer)).flags, (CLIP.request | CLIP.text) >>> 0, 'asks for the new text')
+      }
+      // A request gets no provide, and a peek says the client holds nothing.
+      peer.write(ext(CLIP.request | CLIP.text), ext(CLIP.peek))
+      assert.equal((await readExt(peer)).flags, CLIP.notify)
+      await sync()
+      assert.equal(peer.reader.available, 0)
+      client.destroy()
+    })
+  }
+
+  test('supports.unicodeClipboard: text and the notify action; otherwise text may go as Latin-1 (#37)', async () => {
+    const { client, peer } = await connected()
+    assert.equal(client.supports.unicodeClipboard, false)
+    const latin1 = async () => {
+      const head = await peer.read(8)
+      assert.equal(head[0], 6)
+      return (await peer.read(head.readInt32BE(4))).toString('latin1')
+    }
+
+    // Text without notify, 20 bytes unasked: short text goes as UTF-8, longer as Latin-1.
+    peer.write(ext(CLIP.caps | CLIP.text | CLIP.request | CLIP.provide, u32(20)))
+    await readExt(peer)
+    assert.equal(client.supports.extendedClipboard, true)
+    assert.equal(client.supports.unicodeClipboard, false)
+    client.updateClipboard('short ☃')
+    assert.equal((await readExt(peer)).flags, (CLIP.provide | CLIP.text) >>> 0)
+    client.updateClipboard('a longer text, ☃ and all')
+    assert.equal(await latin1(), 'a longer text, ? and all')
+
+    // Servers send caps again on every SetEncodings.
+    peer.write(ext(CLIP.caps | ALL, u32(0)))
+    await readExt(peer)
+    assert.equal(client.supports.unicodeClipboard, true)
+    client.updateClipboard('a longer text, ☃ and all')
+    assert.equal((await readExt(peer)).flags, (CLIP.notify | CLIP.text) >>> 0)
+
+    // No text format: no text through the Extended Clipboard at all.
+    peer.write(ext(CLIP.caps | CLIP.dib | CLIP.notify | CLIP.provide, u32(1000)))
+    await readExt(peer)
+    assert.equal(client.supports.extendedClipboard, true)
+    assert.equal(client.supports.unicodeClipboard, false)
+    client.updateClipboard('☃')
+    assert.equal(await latin1(), '?')
     client.destroy()
   })
 })
