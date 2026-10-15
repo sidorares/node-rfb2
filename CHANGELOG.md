@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/sidorares/node-rfb2/compare/v1.0.0...v1.1.0) (2026-10-15)
+
+
+### Features
+
+* Extended Clipboard: clipboardEmpty, supports.unicodeClipboard, no stale client text ([#40](https://github.com/sidorares/node-rfb2/issues/40)) ([94fd8c7](https://github.com/sidorares/node-rfb2/commit/94fd8c70f668b37a14df6b49bca9b0c92072a8d7)), closes [#36](https://github.com/sidorares/node-rfb2/issues/36) [#37](https://github.com/sidorares/node-rfb2/issues/37)
+
+
+### Bug Fixes
+
+* build dist/ in prepare so installs from git work ([#39](https://github.com/sidorares/node-rfb2/issues/39)) ([a8bd4b8](https://github.com/sidorares/node-rfb2/commit/a8bd4b8929f50655a97f1e990add52e117e01566))
+
 ## [1.0.0](https://github.com/sidorares/node-rfb2/compare/v0.2.2...v1.0.0) (2026-10-14)
 
 
