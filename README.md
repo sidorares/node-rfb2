@@ -218,15 +218,17 @@ The 0.x API still works: `createConnection()`, the `connect`, `rect`, `resize`, 
 ## Development
 
 ```bash
-npm install
+npm install                # also builds dist/ (the prepare script)
 npm run check              # lint (Biome), typecheck (tsc), unit tests (node:test)
-npm run build              # dist/ for publishing
+npm run build              # rebuild dist/ after changing src/
 npm run servers:up         # VNC servers in Docker on 127.0.0.1:159xx (see docker/README.md)
 npm run test:integration   # every encoding, pixel format and security type against them
 npm run servers:down
 ```
 
 The sources run directly on Node (type stripping): `node examples/screenshot.ts host 5900 > screen.png`.
+To try an unreleased branch in another project, `npm install github:sidorares/node-rfb2#<branch>`; npm
+runs `prepare` there too, so the install has `dist/`.
 
 Integration tests skip servers that aren't running; CI starts them all (`.github/workflows/ci.yml`).
 Commits on `master` use [Conventional Commits](https://www.conventionalcommits.org). release-please

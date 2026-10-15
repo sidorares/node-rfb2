@@ -51,7 +51,7 @@
     "servers:up": "docker compose -f docker/compose.yaml up -d --build --wait",
     "servers:down": "docker compose -f docker/compose.yaml down",
     "check": "npm run lint && npm run typecheck && npm test",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
