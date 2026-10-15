@@ -37,9 +37,9 @@ jobs:
             exit 1
           fi
       - run: npm run check
-      - run: npm run build
       - name: Publish
         run: |
+          # npm publish builds dist/ first (the prepare script).
           # An empty NPM_TOKEN must not override trusted publishing (OIDC).
           if [ -z "${NODE_AUTH_TOKEN:-}" ]; then unset NODE_AUTH_TOKEN; fi
           version="$(node -p 'require("./package.json").version')"
