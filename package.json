@@ -1,6 +1,6 @@
 {
   "name": "rfb2",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "RFB (VNC) protocol client and server for Node.js: every common encoding and security type, typed, promise-based",
   "keywords": [
     "vnc",
