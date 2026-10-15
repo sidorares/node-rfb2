@@ -10,6 +10,7 @@
 
 ### Bug Fixes
 
+* bound decompressed and buffered sizes of clipboard and zlib data ([GHSA-r442-xqw3-694f](https://github.com/sidorares/node-rfb2/security/advisories/GHSA-r442-xqw3-694f)) ([0772069](https://github.com/sidorares/node-rfb2/commit/0772069b877451659683b5e97999c999671010ea))
 * build dist/ in prepare so installs from git work ([#39](https://github.com/sidorares/node-rfb2/issues/39)) ([a8bd4b8](https://github.com/sidorares/node-rfb2/commit/a8bd4b8929f50655a97f1e990add52e117e01566))
 
 ## [1.0.0](https://github.com/sidorares/node-rfb2/compare/v0.2.2...v1.0.0) (2026-10-14)
