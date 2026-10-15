@@ -26,7 +26,7 @@ client.pointerEvent(100, 100, buttons.left) // button down
 client.pointerEvent(100, 100, 0) // and up
 client.keyEvent(keysyms.Return, true)
 client.keyEvent(keysyms.Return, false)
-client.updateClipboard('héllo ☃') // UTF-8 when the server has the Extended Clipboard
+client.updateClipboard('héllo ☃') // UTF-8 when client.supports.unicodeClipboard
 
 await client.close()
 ```
@@ -74,8 +74,11 @@ is the 0.x name for it.
 
 After `connect`: `width`, `height`, `name`, `pixelFormat`, `serverPixelFormat`, `protocolVersion`,
 `serverVersion`, `securityType`, `screens`, `colorMap`, `cursor`, and `supports` (what the server has
-confirmed: `extendedDesktopSize`, `continuousUpdates`, `fence`, `extendedClipboard`, `qemuExtendedKeyEvent`,
-`qemuAudio`, `extendedMouseButtons`, `xvp`).
+confirmed: `extendedDesktopSize`, `continuousUpdates`, `fence`, `extendedClipboard`, `unicodeClipboard`,
+`qemuExtendedKeyEvent`, `qemuAudio`, `extendedMouseButtons`, `xvp`). `unicodeClipboard` means
+`updateClipboard` sends any text as UTF-8 (the server's Extended Clipboard takes text with the notify
+action); without it, text may go as Latin-1 with `?` for other characters, so check it before sending
+text that Latin-1 can't hold.
 
 ### Security
 
@@ -146,14 +149,22 @@ const client = await connect({
 | `pointerEvent(x, y, buttons)` | `buttons.left \| buttons.right ...`; the wheel is a press and release of `buttons.wheelUp` / `wheelDown` |
 | `keyEvent(keysym, down)` | X11 keysyms: `keysyms.Return`, `keysymFromChar('é')`, ... |
 | `qemuKeyEvent(keysym, scancode, down)` | QEMU: XT scancodes, independent of the server's keymap |
-| `updateClipboard(text)` | UTF-8 with the Extended Clipboard, else Latin-1 |
+| `updateClipboard(text)` | UTF-8 when `supports.unicodeClipboard`, else Latin-1 |
 | `setDesktopSize(width, height, screens?)` | resolves when the server has resized |
 | `setEncodings(list)` | change the encodings mid-session |
 | `fence(flags, payload)`, `xvp('reboot')`, `enableAudio(format)` / `disableAudio()` | |
 | `close()`, `end()`, `destroy()` | `close()` resolves once closed |
 
 Events: `connect`, `rect`, `update`, `resize`, `cursor`, `cursorPosition`, `desktopName`, `ledState`,
-`colormap`, `bell`, `clipboard`, `fence`, `xvp`, `audio`, `endOfContinuousUpdates`, `error`, `close`.
+`colormap`, `bell`, `clipboard`, `clipboardEmpty`, `fence`, `xvp`, `audio`, `endOfContinuousUpdates`, `error`,
+`close`.
+
+The server's clipboard arrives as `clipboard` with its text (`''` when the server sends empty text). With
+the Extended Clipboard, `clipboardEmpty` says that it changed and holds no text: it was emptied, or holds
+only other formats, such as an image. To wait for what a copy on the server produced, listen for both.
+TigerVNC and TurboVNC also tell every client "no text" when a client's `updateClipboard` replaces text of
+the server's own; the client that made the change gets no `clipboardEmpty` for it. After `updateClipboard`,
+the client hands its text to the server on request until the server reports a newer clipboard of its own.
 
 ## Errors
 

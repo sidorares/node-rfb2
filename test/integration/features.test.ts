@@ -125,6 +125,35 @@ describe('TigerVNC extensions', () => {
     }
   })
 
+  for (const server of [tigervncVnc, turbovnc]) {
+    test(`Extended Clipboard, ${server.name}: no clipboardEmpty for a client's own change`, async (t) => {
+      if (!(await needServer(t, server.port, server.name))) return
+      const options = { host: HOST, port: server.port, password: server.password }
+      const a = await connect(options)
+      const b = await connect(options)
+      try {
+        await until(() => a.supports.unicodeClipboard && b.supports.unicodeClipboard, 5000, 'clipboard capabilities')
+        // The server's clipboard gets text of its own: rfb2-clipboard (docker/src) takes over what a sets.
+        const first = `first ${Date.now()}`
+        const seen = Promise.all([a, b].map((c) => eventWhere<string>(c, 'clipboard', (text) => text === first)))
+        a.updateClipboard(first)
+        await seen
+        await new Promise((resolve) => setTimeout(resolve, 500)) // the X selections settle
+        const empty = { a: 0, b: 0 }
+        a.on('clipboardEmpty', () => empty.a++)
+        b.on('clipboardEmpty', () => empty.b++)
+        // a replaces it: the server tells every client that its text is gone, then announces a's text.
+        const second = `second ${Date.now()}`
+        const both = Promise.all([a, b].map((c) => eventWhere<string>(c, 'clipboard', (text) => text === second)))
+        a.updateClipboard(second)
+        await both
+        assert.deepEqual(empty, { a: 0, b: 1 })
+      } finally {
+        await Promise.all([a.close(), b.close()])
+      }
+    })
+  }
+
   test('Latin-1 clipboard for a client without the Extended Clipboard', async (t) => {
     if (!(await needServer(t, tigervncVnc.port, tigervncVnc.name))) return
     const encodings = defaultEncodings.filter((e) => e !== E.pseudoExtendedClipboard)

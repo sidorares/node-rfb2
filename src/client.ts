@@ -122,6 +122,11 @@ export interface ServerSupport {
   fence: boolean
   extendedDesktopSize: boolean
   extendedClipboard: boolean
+  /**
+   * `updateClipboard` sends text of any length as UTF-8: the server's Extended Clipboard takes text and
+   * the notify action. When false, text may go as Latin-1, with '?' for other characters.
+   */
+  unicodeClipboard: boolean
   qemuExtendedKeyEvent: boolean
   qemuAudio: boolean
   extendedMouseButtons: boolean
@@ -155,6 +160,11 @@ export type RfbClientEvents = {
   bell: []
   /** The server's clipboard (Latin-1 text, or UTF-8 with the Extended Clipboard). */
   clipboard: [text: string]
+  /**
+   * Extended Clipboard: the server's clipboard changed and holds no text (it was emptied, or holds
+   * only other formats, such as an image).
+   */
+  clipboardEmpty: []
   /** A ServerFence that answers ours (requests from the server are answered automatically). */
   fence: [fence: { flags: number; payload: Buffer }]
   xvp: [message: { version: number; code: number }]
@@ -235,6 +245,7 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
     fence: false,
     extendedDesktopSize: false,
     extendedClipboard: false,
+    unicodeClipboard: false,
     qemuExtendedKeyEvent: false,
     qemuAudio: false,
     extendedMouseButtons: false,
@@ -257,7 +268,16 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
   #updateWaiters: { resolve: (u: Update) => void; reject: (e: Error) => void }[] = []
   #resizeWaiters: { resolve: () => void; reject: (e: Error) => void }[] = []
   #closeWaiters: (() => void)[] = []
-  #clipboard = { serverFlags: 0, textLimit: 0, text: null as string | null }
+  #clipboard = {
+    serverFlags: 0,
+    textLimit: 0,
+    /** The client's text, while it holds the clipboard. */
+    text: null as string | null,
+    /** The server may hold text of its own (assumed until it says otherwise: TigerVNC doesn't tell new clients). */
+    serverText: true,
+    /** A notify without text is due: the server reporting that the client's change took its text away. */
+    echo: false,
+  }
   #onAbort = () => {
     if (this.#state === 'connecting') this.#abort(new RfbError('ABORTED', 'the connection was aborted'))
     else this.destroy()
@@ -385,18 +405,24 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
   }
 
   /**
-   * Sets the server's clipboard. With the Extended Clipboard the text goes as UTF-8; otherwise as
-   * Latin-1 (other characters become '?').
+   * Sets the server's clipboard. When `supports.unicodeClipboard` the text goes as UTF-8; otherwise as
+   * Latin-1 (other characters become '?'). With the Extended Clipboard the client then hands the text
+   * to the server on request, until the server reports a newer clipboard of its own.
    */
   updateClipboard(text: string): void {
     if (!this.supports.extendedClipboard) {
       this.#send(msg.clientCutText(text))
       return
     }
-    this.#clipboard.text = text
-    const flags = this.#clipboard.serverFlags
-    if (flags & CLIP.provide && Buffer.byteLength(text) + 1 <= this.#clipboard.textLimit) this.#provideClipboard()
-    else if (flags & CLIP.notify) this.#sendClipboard(CLIP.notify | CLIP.text)
+    const c = this.#clipboard
+    c.text = text
+    // When the client's text replaces text of the server's own, TigerVNC and TurboVNC tell every client,
+    // this one included, that the server's text is gone (a notify without text): no change for this one.
+    if (c.serverText) c.echo = true
+    c.serverText = false
+    const flags = c.serverFlags
+    if (flags & CLIP.provide && Buffer.byteLength(text) + 1 <= c.textLimit) this.#provideClipboard()
+    else if (flags & CLIP.text && flags & CLIP.notify) this.#sendClipboard(CLIP.notify | CLIP.text)
     else this.#send(msg.clientCutText(text))
   }
 
@@ -964,8 +990,10 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
     const size = Math.abs(length)
     if (size > 64 * 1024 * 1024) throw protocolError(`a ${size}-byte clipboard message`)
     const data = await t.reader.read(size)
-    if (length >= 0) this.emit('clipboard', data.toString('latin1'))
-    else this.#extendedClipboard(data)
+    if (length >= 0) {
+      this.#serverOwnsClipboard(true)
+      this.emit('clipboard', data.toString('latin1'))
+    } else this.#extendedClipboard(data)
   }
 
   #extendedClipboard(data: Buffer): void {
@@ -983,6 +1011,7 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
       this.#clipboard.serverFlags = flags
       this.#clipboard.textLimit = formats & CLIP.text ? (sizes[0] ?? 0) : 0
       this.supports.extendedClipboard = true
+      this.supports.unicodeClipboard = (formats & CLIP.text) !== 0 && (flags & CLIP.notify) !== 0
       const caps = Buffer.alloc(8)
       caps.writeUInt32BE((CLIP.caps | CLIP.text | CLIP.request | CLIP.peek | CLIP.notify | CLIP.provide) >>> 0, 0)
       caps.writeUInt32BE(CLIPBOARD_LIMIT, 4)
@@ -992,7 +1021,17 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
     } else if (flags & CLIP.peek) {
       this.#sendClipboard(CLIP.notify | (this.#clipboard.text !== null ? CLIP.text : 0))
     } else if (flags & CLIP.notify) {
-      if (formats & CLIP.text) this.#sendClipboard(CLIP.request | CLIP.text)
+      if (formats & CLIP.text) {
+        this.#serverOwnsClipboard(true)
+        this.#sendClipboard(CLIP.request | CLIP.text)
+      } else {
+        // The server's own text is gone. The client keeps handing over its text on request (as TigerVNC's
+        // viewer does), and right after the client's own change this is no change (see updateClipboard).
+        const echo = this.#clipboard.echo
+        this.#clipboard.echo = false
+        this.#clipboard.serverText = false
+        if (!echo) this.emit('clipboardEmpty')
+      }
     } else if (flags & CLIP.provide) {
       let body: Buffer
       try {
@@ -1008,10 +1047,22 @@ export class RfbClient extends EventEmitter<RfbClientEvents> {
         if (bit === 0) {
           const end = value.indexOf(0)
           const text = value.toString('utf8', 0, end < 0 ? value.length : end).replace(/\r\n/g, '\n')
+          this.#serverOwnsClipboard(true)
           this.emit('clipboard', text)
         }
       }
+      if (!(formats & CLIP.text)) {
+        this.#serverOwnsClipboard(false)
+        this.emit('clipboardEmpty')
+      }
     }
+  }
+
+  /** The server reports a newer clipboard of its own: the client no longer holds the clipboard. */
+  #serverOwnsClipboard(withText: boolean): void {
+    this.#clipboard.text = null
+    this.#clipboard.echo = false
+    this.#clipboard.serverText = withText
   }
 
   #sendClipboard(flags: number): void {
